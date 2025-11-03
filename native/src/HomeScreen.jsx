@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react'
-import { View, Text, StyleSheet, FlatList, Pressable, Animated, Platform, Dimensions, Image, ImageBackground, ScrollView, Share, Alert, Easing } from 'react-native'
+import { View, Text, StyleSheet, FlatList, Pressable, Animated, Platform, Dimensions, Image, ImageBackground, ScrollView, Share, Alert, Easing, Linking } from 'react-native'
 import { LinearGradient } from 'expo-linear-gradient'
 import { Ionicons } from '@expo/vector-icons'
 import { Grayscale } from 'react-native-color-matrix-image-filters'
@@ -13,8 +13,7 @@ const CARDS = [
   { key: 'community', title: 'קהילה', desc: 'עדכוני קבוצה ושיתופים מהקהילה', icon: 'chatbubbles-outline', image: require('../assets/photos/photo3.png') },
   { key: 'stock-picks', title: 'המלצות על מניות', desc: 'סיגנלים יומיים/שבועיים למסחר', icon: 'trending-up-outline', image: require('../assets/photos/photo2.jpeg'), locked: true, imageScale: 0.92 },
   { key: 'academy', title: 'לימודי מסחר', desc: 'קורסי וידאו ומסלולי למידה', icon: 'school-outline', image: require('../assets/photos/photo4.png') },
-  { key: 'live-alerts', title: 'התראות חמות', desc: 'מרכז התראות ופוש בזמן אמת', icon: 'notifications-outline', image: require('../assets/photos/photo3.png'), locked: true, imageScale: 0.97 },
-  { key: 'mindset-faith', title: 'לימודי מסחר', desc: 'קורסי וידאו ומסלולי למידה', icon: 'sparkles-outline', image: require('../assets/photos/photo1.jpg') },
+  { key: 'live-alerts', title: 'התראות חמות', desc: 'מרכז התראות ופוש בזמן אמת', icon: 'notifications-outline', image: require('../assets/photos/photo3.png'), imageScale: 0.97 },
 ]
 
 // Carousel image order (image 3 promoted to first)
@@ -105,34 +104,17 @@ function Card({ item, index, scrollX, SNAP, CARD_WIDTH, CARD_HEIGHT, OVERLAP, on
         accessibilityLabel={`${item.title} - ${item.desc}`}
       >
         <Animated.View style={[styles.card, animatedStyle]}>
-          {item.locked ? (
-            <Grayscale>
-              <Image
-                source={item.image || IMAGES[index % IMAGES.length]}
-                resizeMode="cover"
-                style={imageStyle}
-              />
-            </Grayscale>
-          ) : (
-            <ImageBackground
-              source={item.image || IMAGES[index % IMAGES.length]}
-              resizeMode="cover"
-              style={StyleSheet.absoluteFill}
-              imageStyle={imageStyle}
-            />
-          )}
+          <ImageBackground
+            source={item.image || IMAGES[index % IMAGES.length]}
+            resizeMode="cover"
+            style={StyleSheet.absoluteFill}
+            imageStyle={imageStyle}
+          />
           <LinearGradient
             colors={[ 'rgba(0,0,0,0.35)', 'rgba(0,0,0,0.0)' ]}
             locations={[0, 0.45]}
             style={StyleSheet.absoluteFill}
           />
-          {item.locked && (
-            <Image
-              source={require('../assets/icons/lock- closed.png')}
-              style={styles.lockIcon}
-              resizeMode="contain"
-            />
-          )}
         </Animated.View>
       </Pressable>
     </View>
@@ -172,6 +154,7 @@ export default function HomeScreen({ navigation }) {
   const [completedDays, setCompletedDays] = React.useState(8)
   const progress = Math.max(0, Math.min(1, completedDays / 14))
   const quote = 'הצלחות משמעותיות נבנות מצעדים קטנים ועקביים. התמדה היא הכוח.'
+  const [unreadCount, setUnreadCount] = React.useState(3) // TODO: Get from backend
 
   const onShareQuote = React.useCallback(() => {
     Share.share({ message: `"${quote}" — נאור ברוך` }).catch(() => {})
@@ -186,8 +169,22 @@ export default function HomeScreen({ navigation }) {
       navigation?.navigate('Courses')
       return
     }
+    if (key === 'live-alerts') {
+      navigation?.navigate('LiveAlerts')
+      return
+    }
     Alert.alert('בקרוב', 'המסך הזה עדיין בפיתוח')
   }, [navigation])
+
+  const handleNotificationPress = React.useCallback(() => {
+    Alert.alert('בקרוב', 'מערכת התראות תתווסף בקרוב')
+  }, [])
+
+  const openSocialLink = React.useCallback((url) => {
+    Linking.openURL(url).catch(() => {
+      Alert.alert('שגיאה', 'לא ניתן לפתוח את הקישור')
+    })
+  }, [])
 
   return (
     <View style={styles.screen}>
@@ -196,12 +193,22 @@ export default function HomeScreen({ navigation }) {
           accessibilityRole="button"
           style={styles.headerMenu}
           hitSlop={12}
-          onPress={() => Alert.alert('תפריט', 'תפריט הצד ייפתח בקרוב')}
+          onPress={() => navigation?.navigate('Admin')}
         >
-          <Ionicons name="menu-outline" size={34} color={DEEP_BLUE} />
+          <Ionicons name="construct-outline" size={28} color={GOLD} />
         </Pressable>
-        <Pressable accessibilityRole="button" style={styles.headerBell} hitSlop={12}>
-          <Ionicons name="notifications-outline" size={42} color={GOLD} />
+        <Pressable
+          accessibilityRole="button"
+          style={styles.headerBell}
+          hitSlop={12}
+          onPress={handleNotificationPress}
+        >
+          <Ionicons name="notifications-outline" size={31} color={GOLD} />
+          {unreadCount > 0 && (
+            <View style={styles.badge}>
+              <Text style={styles.badgeText}>{unreadCount > 9 ? '9+' : unreadCount}</Text>
+            </View>
+          )}
         </Pressable>
         <View style={styles.headerContent}>
           <Text style={styles.title}>NAOR BARUCH</Text>
@@ -336,6 +343,42 @@ export default function HomeScreen({ navigation }) {
             </Pressable>
           </View>
 
+          {/* Social Links */}
+          <View style={styles.section}>
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionTitle}>קישורים חברתיים</Text>
+            </View>
+            <View style={styles.socialRow}>
+              <Pressable
+                style={styles.socialButton}
+                onPress={() => openSocialLink('https://www.instagram.com/naor_baruch')}
+                accessibilityRole="button"
+                accessibilityLabel="Instagram"
+              >
+                <Ionicons name="logo-instagram" size={24} color={GOLD} />
+                <Text style={styles.socialLabel}>Instagram</Text>
+              </Pressable>
+              <Pressable
+                style={styles.socialButton}
+                onPress={() => openSocialLink('https://t.me/naor_baruch')}
+                accessibilityRole="button"
+                accessibilityLabel="Telegram"
+              >
+                <Ionicons name="paper-plane-outline" size={24} color={GOLD} />
+                <Text style={styles.socialLabel}>Telegram</Text>
+              </Pressable>
+              <Pressable
+                style={styles.socialButton}
+                onPress={() => openSocialLink('https://wa.me/972XXXXXXXXX')}
+                accessibilityRole="button"
+                accessibilityLabel="WhatsApp"
+              >
+                <Ionicons name="logo-whatsapp" size={24} color={GOLD} />
+                <Text style={styles.socialLabel}>WhatsApp</Text>
+              </Pressable>
+            </View>
+          </View>
+
         </ScrollView>
       </View>
 
@@ -363,15 +406,23 @@ export default function HomeScreen({ navigation }) {
           <Text style={[styles.navLabel, { color: activeTab === 'community' ? GOLD : '#B3B3B3' }]}>קהילה</Text>
         </Pressable>
 
+        {/* CENTER - Courses (Featured Button) */}
         <Pressable
           accessibilityRole="button"
           onPress={() => { setActiveTab('courses'); navigation?.navigate('Courses') }}
-          style={styles.navItemPressable}
+          style={styles.centerNavButton}
         >
-          <View style={styles.iconBox}>
-            <Ionicons name="school-outline" size={22} color={activeTab === 'courses' ? GOLD : '#B3B3B3'} />
-          </View>
-          <Text style={[styles.navLabel, { color: activeTab === 'courses' ? GOLD : '#B3B3B3' }]}>קורסים</Text>
+          <View style={styles.centerNavGlowOuter} />
+          <LinearGradient
+            colors={[GOLD, '#c49b2e', GOLD]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={styles.centerNavGradient}
+          >
+            <View style={styles.centerNavGlow} />
+            <Ionicons name="school" size={28} color="#fff" />
+          </LinearGradient>
+          <Text style={styles.centerNavLabel}>קורסים</Text>
         </Pressable>
 
         <Pressable
@@ -387,7 +438,7 @@ export default function HomeScreen({ navigation }) {
 
         <Pressable
           accessibilityRole="button"
-          onPress={() => Alert.alert('בקרוב', 'מסך הפרופיל יתווסף בהמשך')}
+          onPress={() => { setActiveTab('profile'); navigation?.navigate('Profile') }}
           style={styles.navItemPressable}
         >
           <View style={styles.iconBox}>
@@ -412,30 +463,40 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     overflow: 'hidden',
   },
-  headerMenu: {
-    position: 'absolute',
-    left: 16,
-    top: Platform.select({ ios: 24, android: 18, default: 8 }),
-    zIndex: 10,
-  },
-  headerGlow: {
-    position: 'absolute',
-    top: -40,
-    left: 0,
-    right: 0,
-    height: 220,
-    backgroundColor: 'transparent',
-    // subtle radial glow using gradient-like effect
-  },
   headerContent: {
     alignItems: 'center',
     marginTop: 6,
   },
+  headerMenu: {
+    position: 'absolute',
+    left: 16,
+    top: Platform.select({ ios: 54, android: 52, default: 48 }),
+    zIndex: 10,
+  },
   headerBell: {
     position: 'absolute',
     right: 16,
-    top: Platform.select({ ios: 24, android: 18, default: 8 }),
+    top: Platform.select({ ios: 54, android: 52, default: 48 }),
     zIndex: 10,
+  },
+  badge: {
+    position: 'absolute',
+    top: -4,
+    right: -6,
+    backgroundColor: '#dc2626',
+    borderRadius: 10,
+    minWidth: 20,
+    height: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 6,
+    borderWidth: 2,
+    borderColor: BG,
+  },
+  badgeText: {
+    color: '#ffffff',
+    fontSize: 11,
+    fontFamily: 'Poppins_700Bold',
   },
   title: {
     color: GOLD,
@@ -784,6 +845,70 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#B3B3B3',
     fontFamily: 'Poppins_400Regular',
+  },
+  socialRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    gap: 8,
+  },
+  socialButton: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(11,27,58,0.04)',
+    borderRadius: 12,
+    padding: 16,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(11,27,58,0.08)',
+    gap: 8,
+  },
+  socialLabel: {
+    color: DEEP_BLUE,
+    fontSize: 14,
+    fontFamily: 'Poppins_500Medium',
+  },
+  centerNavButton: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: -28,
+  },
+  centerNavGlowOuter: {
+    position: 'absolute',
+    width: 96,
+    height: 96,
+    borderRadius: 48,
+    backgroundColor: GOLD,
+    opacity: 0.15,
+    top: -16,
+    left: -16,
+  },
+  centerNavGradient: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: GOLD,
+    shadowOpacity: 0.6,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 12,
+    borderWidth: 4,
+    borderColor: BG,
+  },
+  centerNavGlow: {
+    position: 'absolute',
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: GOLD,
+    opacity: 0.25,
+  },
+  centerNavLabel: {
+    marginTop: 6,
+    fontSize: 12,
+    color: GOLD,
+    fontFamily: 'Poppins_600SemiBold',
   },
 })
 

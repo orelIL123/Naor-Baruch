@@ -4,26 +4,46 @@
     "slug": "naor-baruch",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/icon.png",
+    "icon": "./assets/adaptive-icon.png",
     "userInterfaceStyle": "dark",
     "newArchEnabled": true,
+    "owner": "orel895",
     "splash": {
       "image": "./assets/splashphoto.png",
       "resizeMode": "cover",
       "backgroundColor": "#0A0A0A"
     },
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.naorbaruch.trading",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#0A0A0A"
       },
-      "edgeToEdgeEnabled": true
+      "edgeToEdgeEnabled": true,
+      "package": "com.naorbaruch.trading",
+      "permissions": [
+        "android.permission.RECEIVE_BOOT_COMPLETED",
+        "android.permission.VIBRATE"
+      ]
+    },
+    "notification": {
+      "color": "#D4AF37",
+      "androidMode": "default",
+      "androidCollapsedTitle": "התראות מ-Naor Baruch"
     },
     "web": {
       "favicon": "./assets/favicon.png"
+    },
+    "extra": {
+      "eas": {
+        "projectId": "c2aa47e6-3696-4f17-8681-0b4b4f178387"
+      }
     }
   }
 }

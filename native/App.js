@@ -3,18 +3,24 @@ import { StatusBar } from 'expo-status-bar'
 import { View, ActivityIndicator, Image, Animated } from 'react-native'
 import { NavigationContainer } from '@react-navigation/native'
 import { createNativeStackNavigator } from '@react-navigation/native-stack'
+import * as Notifications from 'expo-notifications'
 import HomeScreen from './src/HomeScreen'
 import DailyInsightScreen from './src/screens/DailyInsightScreen'
 import CoursesScreen from './src/screens/CoursesScreen'
 import NewsScreen from './src/screens/NewsScreen'
+import ProfileScreen from './src/screens/ProfileScreen'
+import LiveAlertsScreen from './src/screens/LiveAlertsScreen'
+import AdminScreen from './src/screens/AdminScreen'
 import { useFonts, Poppins_400Regular, Poppins_600SemiBold, Poppins_700Bold } from '@expo-google-fonts/poppins'
 import { CinzelDecorative_400Regular, CinzelDecorative_700Bold } from '@expo-google-fonts/cinzel-decorative'
+import { registerForPushNotificationsAsync } from './src/utils/notifications'
 
 const Stack = createNativeStackNavigator()
 
 export default function App() {
   const [showSplash, setShowSplash] = useState(true)
   const fadeAnim = useRef(new Animated.Value(1)).current
+  const navigationRef = useRef(null)
 
   const [fontsLoaded] = useFonts({
     Poppins_400Regular,
@@ -38,6 +44,34 @@ export default function App() {
     return () => clearTimeout(t)
   }, [fadeAnim])
 
+  // Register for push notifications
+  useEffect(() => {
+    registerForPushNotificationsAsync().then(token => {
+      if (token) {
+        console.log('Push Token:', token)
+        // TODO: Save token to Firestore when user logs in
+      }
+    })
+
+    // Handle notification received while app is in foreground
+    const notificationListener = Notifications.addNotificationReceivedListener(notification => {
+      console.log('Notification received:', notification)
+    })
+
+    // Handle notification tap
+    const responseListener = Notifications.addNotificationResponseReceivedListener(response => {
+      const screen = response.notification.request.content.data.screen
+      if (screen && navigationRef.current) {
+        navigationRef.current.navigate(screen)
+      }
+    })
+
+    return () => {
+      Notifications.removeNotificationSubscription(notificationListener)
+      Notifications.removeNotificationSubscription(responseListener)
+    }
+  }, [])
+
   if (!fontsLoaded) {
     return (
       <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#FFFFFF' }}>
@@ -49,13 +83,16 @@ export default function App() {
 
   return (
     <View style={{ flex: 1, backgroundColor: '#FFFFFF' }}>
-      <NavigationContainer>
+      <NavigationContainer ref={navigationRef}>
         <StatusBar style="dark" />
         <Stack.Navigator screenOptions={{ headerShown: false }}>
           <Stack.Screen name="Home" component={HomeScreen} />
           <Stack.Screen name="DailyInsight" component={DailyInsightScreen} />
           <Stack.Screen name="Courses" component={CoursesScreen} />
           <Stack.Screen name="News" component={NewsScreen} />
+          <Stack.Screen name="Profile" component={ProfileScreen} />
+          <Stack.Screen name="LiveAlerts" component={LiveAlertsScreen} />
+          <Stack.Screen name="Admin" component={AdminScreen} />
         </Stack.Navigator>
       </NavigationContainer>
       {showSplash && (

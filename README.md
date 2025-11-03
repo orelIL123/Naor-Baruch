@@ -26,3 +26,4 @@ Open the dev server URL that appears in the terminal (typically `http://localhos
 ## Notes
 - Navigation is only visual. No routing or business logic is implemented.
 - All styles are in `src/styles.css`. The `HomeScreen` component is in `src/HomeScreen.jsx`.
+
