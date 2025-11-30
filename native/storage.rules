@@ -1,0 +1,61 @@
+rules_version = '2';
+
+service firebase.storage {
+  match /b/{bucket}/o {
+    
+    // ========== HELPER FUNCTIONS ==========
+    
+    function isSignedIn() {
+      return request.auth != null;
+    }
+    
+    function isAdmin() {
+      return isSignedIn() && 
+             firestore.exists(/databases/(default)/documents/users/$(request.auth.uid)) &&
+             firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.role == 'admin';
+    }
+    
+    // ========== TZADIKIM IMAGES ==========
+    // צדיקים - רק Admin יכול להעלות, כולם יכולים לקרוא
+    match /tzadikim/{tzadikId}/{allPaths=**} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+    
+    // ========== CARDS IMAGES ==========
+    match /cards/{cardId}/{allPaths=**} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+    
+    // ========== NEWS IMAGES ==========
+    match /news/{newsId}/{allPaths=**} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+    
+    // ========== BOOKS IMAGES ==========
+    // ספרים - רק Admin יכול להעלות, כולם יכולים לקרוא
+    match /books/{bookId}/{allPaths=**} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+    
+    // ========== COURSES ==========
+    match /courses/{courseId}/{allPaths=**} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+    
+    // ========== USER UPLOADS ==========
+    match /users/{userId}/{allPaths=**} {
+      allow read: if true;
+      allow write: if isSignedIn() && request.auth.uid == userId;
+    }
+    
+    // ========== DEFAULT DENY ==========
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

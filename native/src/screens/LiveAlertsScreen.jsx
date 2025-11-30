@@ -1,11 +1,12 @@
 import React, { useState } from 'react'
-import { SafeAreaView, View, Text, StyleSheet, FlatList, Pressable, Platform } from 'react-native'
+import { View, Text, StyleSheet, FlatList, Pressable, Platform } from 'react-native'
+import { SafeAreaView } from 'react-native-safe-area-context'
 import { LinearGradient } from 'expo-linear-gradient'
 import { Ionicons } from '@expo/vector-icons'
 
-const GOLD = '#D4AF37'
+const GOLD = '#E63946'
 const BG = '#FFFFFF'
-const DEEP_BLUE = '#0b1b3a'
+const DEEP_BLUE = '#2D6A4F'
 
 // Mock data for live alerts
 const ALERTS = [

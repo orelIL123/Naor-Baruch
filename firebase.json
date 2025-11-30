@@ -1,0 +1,14 @@
+{
+  "firestore": {
+    "rules": "native/firestore.rules",
+    "indexes": "firestore.indexes.json"
+  },
+  "storage": [
+    {
+      "bucket": "yank-99f79.firebasestorage.app",
+      "rules": "native/storage.rules"
+    }
+  ]
+}
+
+

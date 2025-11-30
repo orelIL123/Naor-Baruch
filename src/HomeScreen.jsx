@@ -1,91 +1,46 @@
 import React, { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
-  IoBulbOutline,
-  IoChatbubblesOutline,
-  IoTrendingUpOutline,
+  IoMusicalNotesOutline,
+  IoBookOutline,
   IoSchoolOutline,
-  IoNotificationsOutline,
+  IoHeartOutline,
   IoSparklesOutline,
-  IoHomeOutline,
   IoPersonCircleOutline,
+  IoPiano,
 } from 'react-icons/io5'
 import { FaInstagram, FaTelegramPlane } from 'react-icons/fa'
 import { SignedIn, SignedOut, UserButton } from '@clerk/clerk-react'
 import AuthModal from './components/AuthModal.jsx'
+import { homeCards } from './data/cards.js'
 
-const GOLD = '#D4AF37'
-
-const cards = [
-  {
-    key: 'daily-insight',
-    title: 'ערך יומי',
-    desc: 'תובנה מעוררת השראה ליום שלך',
-    Icon: IoBulbOutline,
-  },
-  {
-    key: 'community',
-    title: 'קהילה',
-    desc: 'עדכוני קבוצה ושיתופים מהקהילה',
-    Icon: IoChatbubblesOutline,
-  },
-  {
-    key: 'stock-picks',
-    title: 'המלצות על מניות',
-    desc: 'סיגנלים יומיים/שבועיים למסחר',
-    Icon: IoTrendingUpOutline,
-  },
-  {
-    key: 'academy',
-    title: 'לימודי מסחר',
-    desc: 'קורסי וידאו ומסלולי למידה',
-    Icon: IoSchoolOutline,
-  },
-  {
-    key: 'live-alerts',
-    title: 'התראות חמות',
-    desc: 'מרכז התראות ופוש בזמן אמת',
-    Icon: IoNotificationsOutline,
-  },
-  {
-    key: 'mindset-faith',
-    title: 'תובנות ואמונה',
-    desc: 'מאמרים או פודקאסטים להשראה',
-    Icon: IoSparklesOutline,
-  },
-]
+const ACCENT = '#4A90E2'
 
 export default function HomeScreen({ hasClerk = false }) {
   const navigate = useNavigate()
   const [authOpen, setAuthOpen] = useState(false)
   const [activeTab, setActiveTab] = useState('home')
-  const [sparkle, setSparkle] = useState(false)
 
   const handleHomeClick = () => {
     setActiveTab('home')
-    setSparkle(true)
-    window.clearTimeout(handleHomeClick._t)
-    handleHomeClick._t = window.setTimeout(() => setSparkle(false), 800)
   }
 
   const handleCardClick = (cardKey) => {
     console.log('Card clicked:', cardKey)
-    if (cardKey === 'daily-insight') {
-      console.log('Navigating to /daily-insight')
+    if (cardKey === 'torah-daily') {
       navigate('/daily-insight')
     }
-    // בהמשך נוסיף את שאר המסכים
   }
 
   return (
     <div className="home-screen">
       <header className="nb-header">
         <div className="nb-header__gradient" />
-        <div className="nb-header__content">
-          <h1 className="nb-title">NAOR BARUCH</h1>
-          <p className="nb-subtitle">Trading • Mindset • Faith</p>
-          <span className="nb-badge">welcome to the TOP&gt;</span>
-          <div className="nb-socials" aria-label="Social links">
+        <div className="nb-header__content" dir="rtl">
+          <h1 className="nb-title">הודו לה׳ כי טוב</h1>
+          <p className="nb-subtitle">תורות • תפילות • ניגונים</p>
+          <span className="nb-badge">בית מדרש הינוקא</span>
+          <div className="nb-socials" aria-label="קישורי קהילה">
             <a href="#" target="_self" aria-label="Instagram (demo)">
               <FaInstagram size={18} />
             </a>
@@ -96,58 +51,78 @@ export default function HomeScreen({ hasClerk = false }) {
         </div>
       </header>
 
-      <main className="nb-main">
-        <section className="nb-grid" aria-label="Main actions">
-          {cards.map((item, idx) => (
+      <main className="nb-main" dir="rtl">
+        <section className="nb-grid" aria-label="תכנים מרכזיים">
+          {homeCards.map((item, idx) => (
             <button
               key={item.key}
               className="nb-card"
               type="button"
               style={{ animationDelay: `${idx * 80}ms` }}
-              aria-label={`${item.title} - ${item.desc}`}
+              aria-label={`${item.title} - ${item.description}`}
               onClick={() => handleCardClick(item.key)}
             >
-              <div className="nb-card__icon" aria-hidden="true">
-                <item.Icon size={28} color={GOLD} />
+              <div className="nb-card__background" aria-hidden="true">
+                <img src={item.image} alt="" loading="lazy" />
+                <div className="nb-card__overlay" />
               </div>
-              <div className="nb-card__text" dir="rtl">
+              <div className="nb-card__text">
                 <h3 className="nb-card__title">{item.title}</h3>
-                <p className="nb-card__desc">{item.desc}</p>
+                <p className="nb-card__desc">{item.description}</p>
               </div>
             </button>
           ))}
         </section>
       </main>
 
-      <nav className="nb-bottom-nav" aria-label="Primary">
+      <nav className="nb-bottom-nav" aria-label="ראשי">
         <button
           type="button"
-          className={`nb-nav-item${activeTab === 'home' ? ' is-active' : ''}${sparkle ? ' sparkle' : ''}`}
+          className={`nb-nav-item${activeTab === 'home' ? ' is-active' : ''}`}
           aria-current={activeTab === 'home' ? 'page' : undefined}
           onClick={handleHomeClick}
         >
-          <IoHomeOutline size={22} color={GOLD} />
+          <IoMusicalNotesOutline size={22} color={ACCENT} />
           <span>בית</span>
         </button>
 
         <button
           type="button"
-          className={`nb-nav-item${activeTab === 'community' ? ' is-active' : ''}`}
-          aria-current={activeTab === 'community' ? 'page' : undefined}
-          onClick={() => setActiveTab('community')}
+          className={`nb-nav-item${activeTab === 'piano' ? ' is-active' : ''}`}
+          aria-current={activeTab === 'piano' ? 'page' : undefined}
+          onClick={() => { setActiveTab('piano'); navigate('/piano'); }}
         >
-          <IoChatbubblesOutline size={22} color={GOLD} />
-          <span>קהילה</span>
+          <IoPiano size={22} color={ACCENT} />
         </button>
 
         <button
           type="button"
-          className={`nb-nav-item${activeTab === 'courses' ? ' is-active' : ''}`}
-          aria-current={activeTab === 'courses' ? 'page' : undefined}
-          onClick={() => setActiveTab('courses')}
+          className={`nb-nav-item${activeTab === 'tefilot' ? ' is-active' : ''}`}
+          aria-current={activeTab === 'tefilot' ? 'page' : undefined}
+          onClick={() => setActiveTab('tefilot')}
         >
-          <IoSchoolOutline size={22} color={GOLD} />
-          <span>קורסים</span>
+          <IoHeartOutline size={22} color={ACCENT} />
+          <span>תפילות</span>
+        </button>
+
+        <button
+          type="button"
+          className={`nb-nav-item${activeTab === 'torah' ? ' is-active' : ''}`}
+          aria-current={activeTab === 'torah' ? 'page' : undefined}
+          onClick={() => setActiveTab('torah')}
+        >
+          <IoBookOutline size={22} color={ACCENT} />
+          <span>תורה</span>
+        </button>
+
+        <button
+          type="button"
+          className={`nb-nav-item${activeTab === 'beis' ? ' is-active' : ''}`}
+          aria-current={activeTab === 'beis' ? 'page' : undefined}
+          onClick={() => setActiveTab('beis')}
+        >
+          <IoSparklesOutline size={22} color={ACCENT} />
+          <span>בית מדרש</span>
         </button>
 
         {hasClerk ? (
@@ -162,8 +137,8 @@ export default function HomeScreen({ hasClerk = false }) {
                   setAuthOpen(true)
                 }}
               >
-                <IoPersonCircleOutline size={22} color={GOLD} />
-                <span>פרופיל</span>
+                <IoPersonCircleOutline size={22} color={ACCENT} />
+                <span>חשבון</span>
               </button>
             </SignedOut>
             <SignedIn>
@@ -181,7 +156,7 @@ export default function HomeScreen({ hasClerk = false }) {
                     }
                   }}
                 />
-                <span>פרופיל</span>
+                <span>חשבון</span>
               </button>
             </SignedIn>
           </>
@@ -194,7 +169,7 @@ export default function HomeScreen({ hasClerk = false }) {
             disabled
             style={{ opacity: 0.6, cursor: 'not-allowed' }}
           >
-            <IoPersonCircleOutline size={22} color={GOLD} />
+            <IoPersonCircleOutline size={22} color={ACCENT} />
             <span>בקרוב</span>
           </button>
         )}

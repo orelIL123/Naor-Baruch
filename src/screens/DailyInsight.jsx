@@ -2,38 +2,29 @@ import React from 'react'
 import { useNavigate } from 'react-router-dom'
 import { IoArrowBack, IoCalendarOutline, IoTimeOutline } from 'react-icons/io5'
 
-const GOLD = '#D4AF37'
+const ACCENT = '#4A90E2'
 
-// Mock data - בהמשך יבוא מ-Firebase
 const todayInsight = {
   id: 1,
-  date: new Date().toLocaleDateString('he-IL', { 
-    weekday: 'long', 
-    year: 'numeric', 
-    month: 'long', 
-    day: 'numeric' 
+  date: new Date().toLocaleDateString('he-IL', {
+    weekday: 'long',
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric'
   }),
-  title: 'הכוח של סבלנות במסחר',
-  content: `המסחר הוא מרתון, לא ספרינט. 
+  title: 'תורה יומית: ניצוץ התפילה',
+  content: `״אין תפילה יורדת ריקם״ אמר רב הינוקא, "אלא כל בקשה ממשיכה אור חדש".
 
-כשאתה מתחיל את הדרך, אתה רוצה תוצאות מהירות. אתה רוצה לראות את החשבון גדל כל יום, לחוש את ההצלחה מיד. אבל האמת היא שהמסחר המצליח בנוי על סבלנות, משמעת, ואמונה בתהליך.
+היום אנו לומדים על ברכת "שומע תפילה". כאשר האדם לוחש את בקשתו, הוא מזכיר לעצמו שהקב״ה קרוב לכל קוראיו באמת.
 
-כל טריידר מצליח עבר את התקופות הקשות. את הימים שבהם השוק נע נגדו, את השבועות שבהם הכל נראה אפור. אבל מה שמייחד אותם זה שהם לא ויתרו.
+התבונן רגע לפני שאתה מבקש: מהו החסד שאתה מבקש להאיר בעולם? איך תוכל לזכות שהאור הזה יאיר גם לאחרים?
 
-הם הבינו משהו פשוט אך עמוק:
-✨ הצלחה במסחר היא תוצאה של עקביות לאורך זמן
-✨ כל טעות היא שיעור
-✨ כל יום הוא הזדמנות חדשה
+קבל על עצמך מעשה טוב אחד שילווה את תפילתך היום.
 
-אז היום, תזכור:
-אתה לא מתחרה עם אף אחד חוץ מעצמך אתמול. 
-התמקד בתהליך, לא רק בתוצאה.
-סבלנות + משמעת = הצלחה.
-
-💪 המשך לצמוח, המשך להאמין.`,
-  readTime: '2 דקות קריאה',
-  author: 'נאור ברוך',
-  category: 'Mindset',
+נשימה עמוקה, הלב פתוח – והתפילה מגלה שער חדש.`,
+  readTime: '3 דקות לימוד',
+  author: 'רב הינוקא',
+  category: 'לימוד יומי',
 }
 
 export default function DailyInsight() {
@@ -43,39 +34,35 @@ export default function DailyInsight() {
     <div className="daily-insight-screen">
       {/* Header with back button */}
       <header className="di-header">
-        <button 
-          className="di-back-btn" 
+        <button
+          className="di-back-btn"
           onClick={() => navigate('/')}
           aria-label="חזרה לדף הבית"
         >
-          <IoArrowBack size={24} color={GOLD} />
+          <IoArrowBack size={24} color={ACCENT} />
         </button>
-        <h1 className="di-header-title">ערך יומי</h1>
-        <div style={{ width: 24 }} /> {/* Spacer for centering */}
+        <h1 className="di-header-title">לימוד יומי</h1>
+        <div style={{ width: 24 }} />
       </header>
 
       {/* Main content */}
       <main className="di-main">
         <article className="di-card">
-          {/* Category badge */}
           <div className="di-category">{todayInsight.category}</div>
-          
-          {/* Title */}
+
           <h2 className="di-title">{todayInsight.title}</h2>
-          
-          {/* Meta info */}
+
           <div className="di-meta">
             <div className="di-meta-item">
-              <IoCalendarOutline size={16} color={GOLD} />
+              <IoCalendarOutline size={16} color={ACCENT} />
               <span>{todayInsight.date}</span>
             </div>
             <div className="di-meta-item">
-              <IoTimeOutline size={16} color={GOLD} />
+              <IoTimeOutline size={16} color={ACCENT} />
               <span>{todayInsight.readTime}</span>
             </div>
           </div>
 
-          {/* Content */}
           <div className="di-content">
             {todayInsight.content.split('\n\n').map((paragraph, idx) => (
               <p key={idx} className="di-paragraph">
@@ -84,20 +71,18 @@ export default function DailyInsight() {
             ))}
           </div>
 
-          {/* Author */}
           <div className="di-author">
-            <div className="di-author-avatar">NB</div>
+            <div className="di-author-avatar">ה׳</div>
             <div className="di-author-info">
               <div className="di-author-name">{todayInsight.author}</div>
-              <div className="di-author-title">Trader • Mentor • Faith</div>
+              <div className="di-author-title">תפילה • ניגון • תורה</div>
             </div>
           </div>
         </article>
 
-        {/* Motivational footer */}
         <div className="di-footer-note">
-          <p>💫 התובנה הבאה תגיע מחר בשעה 08:00</p>
-          <p className="di-footer-small">תקבל התראה ישירות לטלפון</p>
+          <p>✨ מחר נלמד קטע חדש מתוך תורת הינוקא</p>
+          <p className="di-footer-small">המשך ברצף יומי מגלה אור מתמיד</p>
         </div>
       </main>
     </div>

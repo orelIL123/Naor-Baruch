@@ -3,6 +3,7 @@ import { Routes, Route } from 'react-router-dom'
 import splashPhoto from '../photos/splashphoto.png'
 import HomeScreen from './HomeScreen.jsx'
 import DailyInsight from './screens/DailyInsight.jsx'
+import PianoScreen from './screens/PianoScreen.jsx'
 
 export default function App({ hasClerk = false }) {
   const [showSplash, setShowSplash] = useState(true)
@@ -27,6 +28,7 @@ export default function App({ hasClerk = false }) {
       <Routes>
         <Route path="/" element={<HomeScreen hasClerk={hasClerk} />} />
         <Route path="/daily-insight" element={<DailyInsight />} />
+        <Route path="/piano" element={<PianoScreen />} />
       </Routes>
     </div>
   )

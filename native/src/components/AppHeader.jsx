@@ -1,0 +1,127 @@
+import React from 'react';
+import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
+import { Ionicons } from '@expo/vector-icons';
+
+export default function AppHeader({
+  title,
+  subtitle,
+  onBackPress,
+  showBackButton = true,
+  rightIcon,
+  onRightIconPress,
+  leftIcon,
+  onLeftIconPress,
+  badge
+}) {
+  return (
+    <LinearGradient
+      colors={['#1a1a2e', '#16213e', '#0f3460']}
+      style={styles.header}
+    >
+      <View style={styles.content}>
+        {showBackButton && (
+          <TouchableOpacity
+            style={styles.backButton}
+            onPress={onBackPress}
+          >
+            <Ionicons name="arrow-forward" size={24} color="#FFD700" />
+          </TouchableOpacity>
+        )}
+
+        {leftIcon && !showBackButton && (
+          <TouchableOpacity
+            style={styles.leftButton}
+            onPress={onLeftIconPress}
+          >
+            <Ionicons name={leftIcon} size={24} color="#FFD700" />
+            {badge > 0 && (
+              <View style={styles.badge}>
+                <Text style={styles.badgeText}>{badge > 9 ? '9+' : badge}</Text>
+              </View>
+            )}
+          </TouchableOpacity>
+        )}
+
+        <View style={styles.titleContainer}>
+          <Text style={styles.title}>{title}</Text>
+          {subtitle && <Text style={styles.subtitle}>{subtitle}</Text>}
+        </View>
+
+        {rightIcon && (
+          <TouchableOpacity
+            style={styles.rightButton}
+            onPress={onRightIconPress}
+          >
+            <Ionicons name={rightIcon} size={24} color="#FFD700" />
+          </TouchableOpacity>
+        )}
+      </View>
+    </LinearGradient>
+  );
+}
+
+const styles = StyleSheet.create({
+  header: {
+    paddingTop: 50,
+    paddingBottom: 20,
+    paddingHorizontal: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 5,
+  },
+  content: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  backButton: {
+    padding: 8,
+  },
+  leftButton: {
+    padding: 8,
+    position: 'relative',
+  },
+  rightButton: {
+    padding: 8,
+  },
+  badge: {
+    position: 'absolute',
+    top: 4,
+    left: 4,
+    backgroundColor: '#dc2626',
+    borderRadius: 10,
+    minWidth: 18,
+    height: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 4,
+    borderWidth: 2,
+    borderColor: '#1a1a2e',
+  },
+  badgeText: {
+    color: '#ffffff',
+    fontSize: 10,
+    fontWeight: 'bold',
+  },
+  titleContainer: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  title: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#FFD700',
+    textAlign: 'center',
+    fontFamily: 'Heebo_700Bold',
+  },
+  subtitle: {
+    fontSize: 14,
+    color: '#fff',
+    textAlign: 'center',
+    marginTop: 4,
+    fontFamily: 'Heebo_400Regular',
+  },
+});

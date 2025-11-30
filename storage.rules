@@ -1,0 +1,87 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    // ========== HELPER FUNCTIONS ==========
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return request.auth != null &&
+             firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.role == 'admin';
+    }
+
+    function isValidImage() {
+      return request.resource.size < 5 * 1024 * 1024 && // Max 5MB
+             request.resource.contentType.matches('image/.*');
+    }
+
+    function isValidVideo() {
+      return request.resource.size < 100 * 1024 * 1024 && // Max 100MB
+             request.resource.contentType.matches('video/.*');
+    }
+
+    // ========== USER UPLOADS ==========
+    match /users/{userId}/{allPaths=**} {
+      // Users can read their own files
+      allow read: if isSignedIn();
+
+      // Users can upload to their own directory (images only)
+      allow write: if isSignedIn() &&
+                   request.auth.uid == userId &&
+                   isValidImage();
+    }
+
+    // ========== COURSES (ADMIN ONLY) ==========
+    match /courses/{courseId}/{allPaths=**} {
+      // All signed-in users can read
+      allow read: if isSignedIn();
+
+      // Only admins can upload course content
+      allow write: if isAdmin() &&
+                   (isValidImage() || isValidVideo());
+    }
+
+    // ========== HOME CARDS (ADMIN ONLY) ==========
+    match /cards/{cardKey}/{allPaths=**} {
+      // Public read
+      allow read: if true;
+
+      // Only admins can upload
+      allow write: if isAdmin() && isValidImage();
+    }
+
+    // ========== NEWS IMAGES (ADMIN ONLY) ==========
+    match /news/{newsId}/{allPaths=**} {
+      // All signed-in users can read
+      allow read: if isSignedIn();
+
+      // Only admins can upload
+      allow write: if isAdmin() && isValidImage();
+    }
+
+    // ========== RECOMMENDATIONS (ADMIN ONLY) ==========
+    match /recommendations/{recoId}/{allPaths=**} {
+      // All signed-in users can read
+      allow read: if isSignedIn();
+
+      // Only admins can upload
+      allow write: if isAdmin() && isValidImage();
+    }
+
+    // ========== TZADIKIM IMAGES (ADMIN ONLY) ==========
+    match /tzadikim/{tzadikId}/{allPaths=**} {
+      // Public read - everyone can see tzadik images
+      allow read: if true;
+
+      // Only admins can upload
+      allow write: if isAdmin() && isValidImage();
+    }
+
+    // ========== DEFAULT DENY ==========
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

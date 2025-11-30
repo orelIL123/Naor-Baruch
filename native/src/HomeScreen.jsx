@@ -1,29 +1,36 @@
-import React, { useMemo } from 'react'
-import { View, Text, StyleSheet, FlatList, Pressable, Animated, Platform, Dimensions, Image, ImageBackground, ScrollView, Share, Alert, Easing, Linking } from 'react-native'
+import React, { useMemo, useState, useEffect } from 'react'
+import { View, Text, StyleSheet, FlatList, Pressable, Animated, Platform, Dimensions, Image, ImageBackground, ScrollView, Share, Alert, Easing, Linking, ActivityIndicator } from 'react-native'
 import { LinearGradient } from 'expo-linear-gradient'
 import { Ionicons } from '@expo/vector-icons'
 import { Grayscale } from 'react-native-color-matrix-image-filters'
+import MenuDrawer from './components/MenuDrawer'
+import AppHeader from './components/AppHeader'
+import { collection, getDocs, query, orderBy, limit, where } from 'firebase/firestore'
+import { db } from './config/firebase'
 
-const GOLD = '#D4AF37'
+const PRIMARY_BLUE = '#1e3a8a'
 const BG = '#FFFFFF'
 const DEEP_BLUE = '#0b1b3a'
+const BLACK = '#000000'
 
-const CARDS = [
-  { key: 'daily-insight', title: 'ערך יומי', desc: 'תובנה מעוררת השראה ליום שלך', icon: 'bulb-outline', image: require('../assets/photos/photo4.png') },
-  { key: 'community', title: 'קהילה', desc: 'עדכוני קבוצה ושיתופים מהקהילה', icon: 'chatbubbles-outline', image: require('../assets/photos/photo3.png') },
-  { key: 'stock-picks', title: 'המלצות על מניות', desc: 'סיגנלים יומיים/שבועיים למסחר', icon: 'trending-up-outline', image: require('../assets/photos/photo2.jpeg'), locked: true, imageScale: 0.92 },
-  { key: 'academy', title: 'לימודי מסחר', desc: 'קורסי וידאו ומסלולי למידה', icon: 'school-outline', image: require('../assets/photos/photo4.png') },
-  { key: 'live-alerts', title: 'התראות חמות', desc: 'מרכז התראות ופוש בזמן אמת', icon: 'notifications-outline', image: require('../assets/photos/photo3.png'), imageScale: 0.97 },
+// Default cards fallback
+const DEFAULT_CARDS = [
+  { key: 'books', title: 'ספרים', desc: 'ספרי תורה וחידושים', icon: 'book-outline', image: require('../assets/photos/cards/ספרים/ספרים.jpg'), gradient: ['#667eea', '#764ba2'], size: 'large' },
+  { key: 'prayers', title: 'תפילות הינוקא', desc: 'תפילות מיוחדות וסגולות', icon: 'heart-outline', image: require('../assets/photos/cards/תפילות הינוקא/תפילה_לחבקוק.png'), gradient: ['#f093fb', '#f5576c'], size: 'large' },
+  { key: 'newsletters', title: 'עלונים', desc: 'עלונים להורדה וצפייה', icon: 'document-text-outline', image: require('../assets/photos/cards/הינוקא.jpg'), gradient: ['#4facfe', '#00f2fe'], size: 'small' },
+  { key: 'dailyLearning', title: 'לימוד יומי', desc: 'תורה וחיזוק יומיים', icon: 'book-outline', image: require('../assets/photos/cards/הינוקא1.jpg'), gradient: ['#43e97b', '#38f9d7'], size: 'small' },
+  { key: 'chidushim', title: 'חידושים', desc: 'חידושי תורה ותובנות', icon: 'bulb-outline', image: require('../assets/photos/cards/הינוקא.png'), gradient: ['#fa709a', '#fee140'], size: 'small' },
+  { key: 'yeshiva', title: 'מהנעשה בבית המדרש', desc: 'עדכונים וחדשות', icon: 'school-outline', image: require('../assets/photos/cards/מהנעשה_בבית_המדרש/מהנעשה_בבית_המדרש.png'), gradient: ['#30cfd0', '#330867'], size: 'small' },
+  { key: 'tzadikim', title: 'ספר תולדות אדם', desc: 'אלפי תמונות ומידע', icon: 'people-outline', image: require('../assets/photos/cards/הינוקא1.jpg'), gradient: ['#a8edea', '#fed6e3'], size: 'large' },
+  { key: 'learningLibrary', title: 'ספריית לימוד', desc: 'כל השיעורים והסרטונים', icon: 'library-outline', image: require('../assets/photos/cards/הינוקא.jpg'), gradient: ['#667eea', '#764ba2'], size: 'large' },
 ]
 
-// Carousel image order (image 3 promoted to first)
+// Carousel image order
 const IMAGES = [
-  require('../assets/photos/photo3.png'), // 1st
-  require('../assets/photos/photo1.jpg'),
-  require('../assets/photos/photo2.jpeg'),
-  require('../assets/photos/photo4.png'),
-  require('../assets/photos/photo3.png'),
-  require('../assets/photos/photo1.jpg'),
+  require('../assets/photos/cards/ספרים/ספרים.jpg'),
+  require('../assets/photos/cards/הינוקא.jpg'),
+  require('../assets/photos/cards/הינוקא1.jpg'),
+  require('../assets/photos/cards/מהנעשה_בבית_המדרש/מהנעשה_בבית_המדרש.png'),
 ]
 
 function useFadeIn(delay = 0) {
@@ -34,30 +41,6 @@ function useFadeIn(delay = 0) {
   return anim
 }
 
-// Mocked market snapshot that updates periodically to feel "live"
-const INITIAL_MARKET = [
-  { key: 'TA35', label: 'ת\'א 35', value: 1890.25, change: 0.45 },
-  { key: 'NASDAQ', label: 'Nasdaq', value: 14780.12, change: -0.32 },
-  { key: 'BTC', label: 'Bitcoin', value: 68250, change: 1.25 },
-]
-
-function useMarketMock(initialItems = INITIAL_MARKET) {
-  const [items, setItems] = React.useState(initialItems)
-  React.useEffect(() => {
-    const id = setInterval(() => {
-      setItems(prev => prev.map(it => {
-        const delta = (Math.random() - 0.5) * 0.8 // -0.4% to +0.4%
-        const nextValue = it.key === 'BTC'
-          ? Math.max(0, Math.round(it.value * (1 + delta / 100)))
-          : Math.max(0, parseFloat((it.value * (1 + delta / 100)).toFixed(2)))
-        const nextChange = parseFloat(delta.toFixed(2))
-        return { ...it, value: nextValue, change: nextChange }
-      }))
-    }, 3500)
-    return () => clearInterval(id)
-  }, [])
-  return items
-}
 
 function Card({ item, index, scrollX, SNAP, CARD_WIDTH, CARD_HEIGHT, OVERLAP, onPress }) {
   const fade = useFadeIn(index * 80)
@@ -66,7 +49,7 @@ function Card({ item, index, scrollX, SNAP, CARD_WIDTH, CARD_HEIGHT, OVERLAP, on
   const onPressIn = () => Animated.spring(pressAnim, { toValue: 1, useNativeDriver: true, speed: 20, bounciness: 10 }).start()
   const onPressOut = () => Animated.spring(pressAnim, { toValue: 0, useNativeDriver: true, speed: 20, bounciness: 10 }).start()
 
-  const inputRange = [ (index - 1) * SNAP, index * SNAP, (index + 1) * SNAP ]
+  const inputRange = [(index - 1) * SNAP, index * SNAP, (index + 1) * SNAP]
   const animatedStyle = {
     opacity: fade,
     width: CARD_WIDTH,
@@ -105,13 +88,13 @@ function Card({ item, index, scrollX, SNAP, CARD_WIDTH, CARD_HEIGHT, OVERLAP, on
       >
         <Animated.View style={[styles.card, animatedStyle]}>
           <ImageBackground
-            source={item.image || IMAGES[index % IMAGES.length]}
+            source={item.image || (item.imageUrl ? { uri: item.imageUrl } : IMAGES[index % IMAGES.length])}
             resizeMode="cover"
             style={StyleSheet.absoluteFill}
             imageStyle={imageStyle}
           />
           <LinearGradient
-            colors={[ 'rgba(0,0,0,0.35)', 'rgba(0,0,0,0.0)' ]}
+            colors={['rgba(0,0,0,0.35)', 'rgba(0,0,0,0.0)']}
             locations={[0, 0.45]}
             style={StyleSheet.absoluteFill}
           />
@@ -125,13 +108,12 @@ export default function HomeScreen({ navigation }) {
   const { width } = Dimensions.get('window')
   const SPACING = 12
   const CARD_WIDTH = Math.min(width * 0.76, 360)
-  const CARD_HEIGHT = Math.round(CARD_WIDTH * (16/9))
+  const CARD_HEIGHT = Math.round(CARD_WIDTH * (16 / 9))
   const OVERLAP = 56
   const SNAP = CARD_WIDTH - OVERLAP
   const sideInset = (width - CARD_WIDTH) / 2
 
   const scrollX = React.useRef(new Animated.Value(0)).current
-  const market = useMarketMock()
   const [activeTab, setActiveTab] = React.useState('home')
   const pulse = React.useRef(new Animated.Value(0)).current
 
@@ -151,26 +133,115 @@ export default function HomeScreen({ navigation }) {
       { scale: pulse.interpolate({ inputRange: [0, 1], outputRange: [0.6, 2.0] }) },
     ],
   }
-  const [completedDays, setCompletedDays] = React.useState(8)
-  const progress = Math.max(0, Math.min(1, completedDays / 14))
-  const quote = 'הצלחות משמעותיות נבנות מצעדים קטנים ועקביים. התמדה היא הכוח.'
-  const [unreadCount, setUnreadCount] = React.useState(3) // TODO: Get from backend
+  const quote = 'ציטוט יומי - הרב הינוקא'
+  const [unreadCount, setUnreadCount] = React.useState(0)
+  const [menuVisible, setMenuVisible] = React.useState(false)
+  const [songs, setSongs] = useState([])
+  const [songsLoading, setSongsLoading] = useState(true)
+  const [cards, setCards] = useState([])
+  const [cardsLoading, setCardsLoading] = useState(true)
 
   const onShareQuote = React.useCallback(() => {
-    Share.share({ message: `"${quote}" — נאור ברוך` }).catch(() => {})
+    Share.share({ message: `"${quote}"` }).catch(() => { })
   }, [quote])
 
+  // Load cards from Firestore
+  useEffect(() => {
+    const loadCards = async () => {
+      try {
+        const q = query(
+          collection(db, 'homeCards'),
+          where('isActive', '==', true),
+          orderBy('order', 'asc')
+        )
+        const querySnapshot = await getDocs(q)
+
+        if (querySnapshot.empty) {
+          // Use default cards if no cards in Firestore
+          console.log('No cards found in Firestore, using defaults')
+          setCards(DEFAULT_CARDS)
+        } else {
+          const cardsData = querySnapshot.docs.map(doc => {
+            const data = doc.data()
+            // Find default card for fallback gradient/size if exists
+            const defaultCard = DEFAULT_CARDS.find(c => c.key === data.key)
+            return {
+              ...data,
+              gradient: defaultCard?.gradient || ['#667eea', '#764ba2'],
+              size: defaultCard?.size || 'small',
+              // Use imageUrl from Firestore if available, otherwise fallback to default
+              image: data.imageUrl ? { uri: data.imageUrl } : defaultCard?.image
+            }
+          })
+          setCards(cardsData)
+          console.log('Loaded cards from Firestore:', cardsData.length)
+        }
+      } catch (error) {
+        console.error('Error loading cards:', error)
+        // Fallback to default cards on error
+        setCards(DEFAULT_CARDS)
+      } finally {
+        setCardsLoading(false)
+      }
+    }
+    loadCards()
+  }, [])
+
+  // Load songs from Firestore
+  useEffect(() => {
+    const loadSongs = async () => {
+      try {
+        const q = query(collection(db, 'music'), orderBy('createdAt', 'desc'), limit(3))
+        const querySnapshot = await getDocs(q)
+        const songsData = querySnapshot.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data()
+        }))
+        setSongs(songsData)
+      } catch (error) {
+        console.error('Error loading songs:', error)
+      } finally {
+        setSongsLoading(false)
+      }
+    }
+    loadSongs()
+  }, [])
+
   const handleCardPress = React.useCallback((key) => {
-    if (key === 'daily-insight') {
-      navigation?.navigate('DailyInsight')
+    if (key === 'chidushim') {
+      navigation?.navigate('DailyLearning')
       return
     }
-    if (key === 'academy') {
-      navigation?.navigate('Courses')
+    if (key === 'dailyLearning') {
+      navigation?.navigate('DailyLearning')
       return
     }
-    if (key === 'live-alerts') {
-      navigation?.navigate('LiveAlerts')
+    if (key === 'books') {
+      navigation?.navigate('Books')
+      return
+    }
+    if (key === 'prayers') {
+      navigation?.navigate('Prayers')
+      return
+    }
+    if (key === 'newsletters') {
+      navigation?.navigate('Newsletters')
+      return
+    }
+    if (key === 'yeshiva') {
+      navigation?.navigate('News')
+      return
+    }
+    if (key === 'tzadikim') {
+      navigation?.navigate('Tzadikim')
+      return
+    }
+    if (key === 'shortLessons') {
+      navigation?.navigate('LearningLibrary')
+      return
+    }
+    if (key === 'learningLibrary') {
+      navigation?.navigate('LearningLibrary')
       return
     }
     Alert.alert('בקרוב', 'המסך הזה עדיין בפיתוח')
@@ -188,33 +259,22 @@ export default function HomeScreen({ navigation }) {
 
   return (
     <View style={styles.screen}>
-      <View style={styles.header}>
-        <Pressable
-          accessibilityRole="button"
-          style={styles.headerMenu}
-          hitSlop={12}
-          onPress={() => navigation?.navigate('Admin')}
-        >
-          <Ionicons name="construct-outline" size={28} color={GOLD} />
-        </Pressable>
-        <Pressable
-          accessibilityRole="button"
-          style={styles.headerBell}
-          hitSlop={12}
-          onPress={handleNotificationPress}
-        >
-          <Ionicons name="notifications-outline" size={31} color={GOLD} />
-          {unreadCount > 0 && (
-            <View style={styles.badge}>
-              <Text style={styles.badgeText}>{unreadCount > 9 ? '9+' : unreadCount}</Text>
-            </View>
-          )}
-        </Pressable>
-        <View style={styles.headerContent}>
-          <Text style={styles.title}>NAOR BARUCH</Text>
-          <Text style={styles.subtitle}>Trading • Mindset • Faith</Text>
-        </View>
-      </View>
+      <AppHeader
+        title="רבי שלמה יהודה בארי"
+        subtitle="הודו לה׳ כי טוב"
+        showBackButton={false}
+        rightIcon="menu"
+        onRightIconPress={() => setMenuVisible(true)}
+        leftIcon="notifications-outline"
+        onLeftIconPress={handleNotificationPress}
+        badge={unreadCount}
+      />
+
+      <MenuDrawer
+        visible={menuVisible}
+        onClose={() => setMenuVisible(false)}
+        navigation={navigation}
+      />
 
       <View style={styles.main}>
         <ScrollView
@@ -222,7 +282,7 @@ export default function HomeScreen({ navigation }) {
           showsVerticalScrollIndicator={false}
         >
           <Animated.FlatList
-            data={CARDS}
+            data={cardsLoading ? DEFAULT_CARDS : cards}
             keyExtractor={(it) => it.key}
             horizontal
             showsHorizontalScrollIndicator={false}
@@ -249,37 +309,14 @@ export default function HomeScreen({ navigation }) {
             )}
           />
 
-          {/* Market Snapshot */}
+          {/* Quote */}
           <View style={styles.section}>
             <View style={styles.sectionHeader}>
-              <Text style={styles.sectionTitle}>תצוגת שוק חיה</Text>
-            </View>
-            <View style={styles.snapshotBar}>
-              {market.map(m => {
-                const up = m.change >= 0
-                return (
-                  <View key={m.key} style={styles.snapshotItem}>
-                    <Text style={styles.snapshotLabel}>{m.label}</Text>
-                    <Text style={styles.snapshotValue}>{m.value}</Text>
-                    <View style={styles.snapshotChangeRow}>
-                      <Ionicons name={up ? 'caret-up' : 'caret-down'} size={14} color={up ? '#16a34a' : '#dc2626'} />
-                      <Text style={[styles.snapshotChange, { color: up ? '#16a34a' : '#dc2626' }]}>{m.change}%</Text>
-                    </View>
-                  </View>
-                )
-              })}
-            </View>
-          </View>
-
-          {/* Quote of the Week */}
-          <View style={styles.section}>
-            <View style={styles.sectionHeader}>
-              <Text style={styles.sectionTitle}>ציטוט השבוע</Text>
+              <Text style={styles.sectionTitle}>בלייר עליון</Text>
             </View>
             <View style={styles.quoteCard}>
-              <Text style={styles.quoteText}>“{quote}”</Text>
+              <Text style={styles.quoteText}>"{quote}"</Text>
               <View style={styles.quoteFooter}>
-                <Text style={styles.quoteAuthor}>— נאור ברוך</Text>
                 <Pressable onPress={onShareQuote} style={styles.shareBtn} accessibilityRole="button">
                   <Ionicons name="share-social-outline" size={16} color="#ffffff" />
                   <Text style={styles.shareBtnText}>שיתוף</Text>
@@ -288,95 +325,109 @@ export default function HomeScreen({ navigation }) {
             </View>
           </View>
 
-          {/* Podcasts / Meditations */}
+          {/* Niggunim / Music */}
           <View style={styles.section}>
             <View style={styles.sectionHeader}>
-              <Text style={styles.sectionTitle}>פינת פודקאסטים / מדיטציות</Text>
+              <Pressable
+                onPress={() => navigation?.navigate('Music')}
+                accessibilityRole="button"
+              >
+                <Text style={styles.sectionLinkText}>עוד →</Text>
+              </Pressable>
+              <Text style={styles.sectionTitle}>ניגונים</Text>
             </View>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.podcastRow}>
-              {[1,2,3].map(i => (
-                <Pressable
-                  key={`pod-${i}`}
-                  style={styles.podcastCard}
-                  onPress={() => Alert.alert('בקרוב', 'נגן אודיו יתווסף כאן')}
-                  accessibilityRole="button"
-                >
-                  <Ionicons name="play-circle" size={34} color={GOLD} />
-                  <Text style={styles.podcastTitle}>פרק {i}</Text>
-                  <Text style={styles.podcastDesc} numberOfLines={1}>Placeholder audio</Text>
-                </Pressable>
-              ))}
-            </ScrollView>
+            {songsLoading ? (
+              <View style={styles.songsLoadingContainer}>
+                <ActivityIndicator size="small" color={PRIMARY_BLUE} />
+              </View>
+            ) : songs.length > 0 ? (
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.podcastRow}>
+                {songs.map((song) => (
+                  <Pressable
+                    key={song.id}
+                    style={styles.podcastCard}
+                    onPress={() => navigation?.navigate('Music')}
+                    accessibilityRole="button"
+                  >
+                    <Ionicons name="musical-notes" size={34} color={PRIMARY_BLUE} />
+                    <Text style={styles.podcastTitle} numberOfLines={1}>{song.title}</Text>
+                    <Text style={styles.podcastDesc} numberOfLines={1}>{song.description || 'ניגון'}</Text>
+                  </Pressable>
+                ))}
+              </ScrollView>
+            ) : (
+              <View style={styles.songsEmptyContainer}>
+                <Ionicons name="musical-notes-outline" size={32} color={PRIMARY_BLUE} style={{ opacity: 0.3 }} />
+                <Text style={styles.songsEmptyText}>אין ניגונים זמינים כרגע</Text>
+              </View>
+            )}
           </View>
 
-          {/* Digital Medal */}
-          <View style={styles.section}>
-            <View style={styles.sectionHeader}>
-              <Text style={styles.sectionTitle}>מדליה דיגיטלית</Text>
-            </View>
-            <View style={styles.medalCard}>
-              <View style={styles.medalIcon}> 
-                <Ionicons name="medal-outline" size={28} color={GOLD} />
-              </View>
-              <View style={{ flex: 1, alignItems: 'flex-end' }}>
-                <Text style={styles.medalTitle}>14 יום של למידה רצופה</Text>
-                <View style={styles.progressBar}>
-                  <View style={[styles.progressFill, { width: `${Math.round(progress * 100)}%` }]} />
-                </View>
-                <Text style={styles.progressText}>{completedDays}/14 ימים</Text>
-              </View>
-            </View>
-          </View>
 
-          {/* Naor Recommends */}
-          <View style={styles.section}>
-            <Pressable style={styles.recoBanner} accessibilityRole="button">
-              <LinearGradient colors={[ '#0b1b3a', '#162a56' ]} style={StyleSheet.absoluteFill} />
-              <View style={{ flex: 1, alignItems: 'flex-end', justifyContent: 'center' }}>
-                <Text style={styles.recoTitle}>נאור ממליץ לראות</Text>
-                <Text style={styles.recoDesc} numberOfLines={2}>וידאו, מאמר או תובנה מומלצים במיוחד עבורך</Text>
-                <View style={styles.recoCta}>
-                  <Text style={styles.recoCtaText}>צפה עכשיו</Text>
-                  <Ionicons name="arrow-forward-circle" size={18} color={GOLD} />
-                </View>
-              </View>
-            </Pressable>
-          </View>
-
-          {/* Social Links */}
-          <View style={styles.section}>
-            <View style={styles.sectionHeader}>
-              <Text style={styles.sectionTitle}>קישורים חברתיים</Text>
-            </View>
+          {/* Social Media Links */}
+          <View style={styles.socialSection}>
+            <Text style={styles.socialSectionTitle}>עקבו אחרינו</Text>
             <View style={styles.socialRow}>
               <Pressable
                 style={styles.socialButton}
-                onPress={() => openSocialLink('https://www.instagram.com/naor_baruch')}
+                onPress={() => openSocialLink('https://www.instagram.com/yanuka_rav_shlomoyehuda/')}
                 accessibilityRole="button"
                 accessibilityLabel="Instagram"
               >
-                <Ionicons name="logo-instagram" size={24} color={GOLD} />
+                <Ionicons name="logo-instagram" size={28} color="#E4405F" />
                 <Text style={styles.socialLabel}>Instagram</Text>
               </Pressable>
+
               <Pressable
                 style={styles.socialButton}
-                onPress={() => openSocialLink('https://t.me/naor_baruch')}
+                onPress={() => openSocialLink('https://www.tiktok.com/@the_yanuka_official')}
                 accessibilityRole="button"
-                accessibilityLabel="Telegram"
+                accessibilityLabel="TikTok"
               >
-                <Ionicons name="paper-plane-outline" size={24} color={GOLD} />
-                <Text style={styles.socialLabel}>Telegram</Text>
+                <Ionicons name="logo-tiktok" size={28} color="#000000" />
+                <Text style={styles.socialLabel}>TikTok</Text>
               </Pressable>
+
               <Pressable
                 style={styles.socialButton}
-                onPress={() => openSocialLink('https://wa.me/972XXXXXXXXX')}
+                onPress={() => openSocialLink('https://www.youtube.com/channel/UC2G7zKbsBNpoVYbwb-NS56w')}
                 accessibilityRole="button"
-                accessibilityLabel="WhatsApp"
+                accessibilityLabel="YouTube"
               >
-                <Ionicons name="logo-whatsapp" size={24} color={GOLD} />
-                <Text style={styles.socialLabel}>WhatsApp</Text>
+                <Ionicons name="logo-youtube" size={28} color="#FF0000" />
+                <Text style={styles.socialLabel}>YouTube</Text>
+              </Pressable>
+
+              <Pressable
+                style={styles.socialButton}
+                onPress={() => openSocialLink('https://www.facebook.com/theYanuka/')}
+                accessibilityRole="button"
+                accessibilityLabel="Facebook"
+              >
+                <Ionicons name="logo-facebook" size={28} color="#1877F2" />
+                <Text style={styles.socialLabel}>Facebook</Text>
               </Pressable>
             </View>
+          </View>
+
+          {/* קח חלק Button */}
+          <View style={styles.takePartContainer}>
+            <Pressable
+              style={styles.takePartButton}
+              onPress={() => Linking.openURL('https://hayanuka.com/contact/')}
+              accessibilityRole="button"
+              accessibilityLabel="קח חלק"
+            >
+              <LinearGradient
+                colors={[PRIMARY_BLUE, '#1e40af']}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={styles.takePartGradient}
+              >
+                <Ionicons name="heart" size={20} color="#fff" />
+                <Text style={styles.takePartText}>קח חלק</Text>
+              </LinearGradient>
+            </Pressable>
           </View>
 
         </ScrollView>
@@ -390,39 +441,39 @@ export default function HomeScreen({ navigation }) {
         >
           <View style={styles.iconBox}>
             <Animated.View style={[styles.pulseRing, pulseStyle]} />
-            <Ionicons name="home-outline" size={22} color={activeTab === 'home' ? GOLD : '#B3B3B3'} />
+            <Ionicons name="home-outline" size={22} color={activeTab === 'home' ? PRIMARY_BLUE : '#B3B3B3'} />
           </View>
-          <Text style={[styles.navLabel, { color: activeTab === 'home' ? GOLD : '#B3B3B3' }]}>בית</Text>
+          <Text style={[styles.navLabel, { color: activeTab === 'home' ? PRIMARY_BLUE : '#B3B3B3' }]}>בית</Text>
         </Pressable>
 
         <Pressable
           accessibilityRole="button"
-          onPress={() => Alert.alert('בקרוב', 'מסך הקהילה יישום לאחר חיבור לבקאנד')}
+          onPress={() => { setActiveTab('piano'); navigation?.navigate('Piano') }}
           style={styles.navItemPressable}
         >
           <View style={styles.iconBox}>
-            <Ionicons name="chatbubbles-outline" size={22} color={activeTab === 'community' ? GOLD : '#B3B3B3'} />
+            <Ionicons name="musical-notes" size={22} color={activeTab === 'piano' ? PRIMARY_BLUE : '#B3B3B3'} />
           </View>
-          <Text style={[styles.navLabel, { color: activeTab === 'community' ? GOLD : '#B3B3B3' }]}>קהילה</Text>
+          <Text style={[styles.navLabel, { color: activeTab === 'piano' ? PRIMARY_BLUE : '#B3B3B3' }]}>פסנתר</Text>
         </Pressable>
 
-        {/* CENTER - Courses (Featured Button) */}
+        {/* CENTER - Music (Featured Button) */}
         <Pressable
           accessibilityRole="button"
-          onPress={() => { setActiveTab('courses'); navigation?.navigate('Courses') }}
+          onPress={() => { setActiveTab('music'); navigation?.navigate('Courses') }}
           style={styles.centerNavButton}
         >
           <View style={styles.centerNavGlowOuter} />
           <LinearGradient
-            colors={[GOLD, '#c49b2e', GOLD]}
+            colors={[PRIMARY_BLUE, '#1e40af', PRIMARY_BLUE]}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 1 }}
             style={styles.centerNavGradient}
           >
             <View style={styles.centerNavGlow} />
-            <Ionicons name="school" size={28} color="#fff" />
+            <Ionicons name="musical-notes" size={28} color="#fff" />
           </LinearGradient>
-          <Text style={styles.centerNavLabel}>קורסים</Text>
+          <Text style={styles.centerNavLabel}>ניגונים</Text>
         </Pressable>
 
         <Pressable
@@ -431,9 +482,9 @@ export default function HomeScreen({ navigation }) {
           style={styles.navItemPressable}
         >
           <View style={styles.iconBox}>
-            <Ionicons name="newspaper-outline" size={22} color={activeTab === 'news' ? GOLD : '#B3B3B3'} />
+            <Ionicons name="newspaper-outline" size={22} color={activeTab === 'news' ? PRIMARY_BLUE : '#B3B3B3'} />
           </View>
-          <Text style={[styles.navLabel, { color: activeTab === 'news' ? GOLD : '#B3B3B3' }]}>חדשות</Text>
+          <Text style={[styles.navLabel, { color: activeTab === 'news' ? PRIMARY_BLUE : '#B3B3B3' }]}>חדשות</Text>
         </Pressable>
 
         <Pressable
@@ -442,9 +493,9 @@ export default function HomeScreen({ navigation }) {
           style={styles.navItemPressable}
         >
           <View style={styles.iconBox}>
-            <Ionicons name="person-circle-outline" size={22} color={activeTab === 'profile' ? GOLD : '#B3B3B3'} />
+            <Ionicons name="person-circle-outline" size={22} color={activeTab === 'profile' ? PRIMARY_BLUE : '#B3B3B3'} />
           </View>
-          <Text style={[styles.navLabel, { color: activeTab === 'profile' ? GOLD : '#B3B3B3' }]}>פרופיל</Text>
+          <Text style={[styles.navLabel, { color: activeTab === 'profile' ? PRIMARY_BLUE : '#B3B3B3' }]}>פרופיל</Text>
         </Pressable>
       </View>
     </View>
@@ -499,17 +550,21 @@ const styles = StyleSheet.create({
     fontFamily: 'Poppins_700Bold',
   },
   title: {
-    color: GOLD,
+    color: PRIMARY_BLUE,
     fontSize: 28,
     fontWeight: '700',
     fontFamily: 'CinzelDecorative_700Bold',
     letterSpacing: 3,
+    textShadowColor: 'rgba(30,58,138,0.2)',
+    textShadowOffset: { width: 0, height: 2 },
+    textShadowRadius: 4,
   },
   subtitle: {
-    marginTop: 6,
-    color: '#B3B3B3',
+    marginTop: 8,
+    color: '#6b7280',
     fontSize: 14,
-    fontFamily: 'Poppins_400Regular',
+    fontFamily: 'Poppins_500Medium',
+    letterSpacing: 0.5,
   },
   main: {
     flex: 1,
@@ -519,7 +574,7 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     paddingBottom: 92,
-    gap: 18,
+    gap: 20,
   },
   grid: {
   },
@@ -527,27 +582,42 @@ const styles = StyleSheet.create({
   },
   section: {
     paddingHorizontal: 8,
+    marginBottom: 4,
   },
   sectionHeader: {
-    alignItems: 'flex-end',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     marginBottom: 8,
     paddingHorizontal: 4,
   },
   sectionTitle: {
     color: DEEP_BLUE,
-    fontSize: 16,
+    fontSize: 17,
     fontFamily: 'Poppins_600SemiBold',
+    letterSpacing: 0.3,
+  },
+  sectionLinkText: {
+    color: PRIMARY_BLUE,
+    fontSize: 14,
+    fontFamily: 'Poppins_600SemiBold',
+    marginLeft: 8,
   },
   snapshotBar: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    backgroundColor: 'rgba(11,27,58,0.04)',
-    borderRadius: 12,
-    paddingVertical: 10,
-    paddingHorizontal: 12,
+    backgroundColor: '#ffffff',
+    borderRadius: 14,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: 'rgba(11,27,58,0.08)',
+    borderColor: 'rgba(11,27,58,0.1)',
+    shadowColor: '#000',
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 2,
   },
   snapshotItem: {
     alignItems: 'flex-end',
@@ -577,17 +647,23 @@ const styles = StyleSheet.create({
   },
   quoteCard: {
     backgroundColor: '#ffffff',
-    borderRadius: 14,
-    padding: 14,
+    borderRadius: 16,
+    padding: 18,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: 'rgba(11,27,58,0.08)',
+    borderColor: 'rgba(11,27,58,0.1)',
+    shadowColor: '#000',
+    shadowOpacity: 0.08,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 3,
   },
   quoteText: {
     color: DEEP_BLUE,
-    fontSize: 14,
-    lineHeight: 20,
+    fontSize: 15,
+    lineHeight: 24,
     textAlign: 'right',
     fontFamily: 'Poppins_500Medium',
+    letterSpacing: 0.2,
   },
   quoteFooter: {
     marginTop: 10,
@@ -604,10 +680,15 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    backgroundColor: GOLD,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
+    backgroundColor: PRIMARY_BLUE,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
     borderRadius: 999,
+    shadowColor: PRIMARY_BLUE,
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 4,
   },
   shareBtnText: {
     color: '#ffffff',
@@ -621,13 +702,18 @@ const styles = StyleSheet.create({
   podcastCard: {
     width: 160,
     height: 110,
-    borderRadius: 12,
-    backgroundColor: 'rgba(11,27,58,0.04)',
+    borderRadius: 14,
+    backgroundColor: '#ffffff',
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: 'rgba(11,27,58,0.08)',
-    padding: 12,
+    borderColor: 'rgba(11,27,58,0.1)',
+    padding: 14,
     alignItems: 'flex-end',
     justifyContent: 'space-between',
+    shadowColor: '#000',
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 2,
   },
   podcastTitle: {
     color: DEEP_BLUE,
@@ -638,6 +724,22 @@ const styles = StyleSheet.create({
     color: '#6b7280',
     fontSize: 12,
     fontFamily: 'Poppins_400Regular',
+  },
+  songsLoadingContainer: {
+    paddingVertical: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  songsEmptyContainer: {
+    paddingVertical: 30,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  songsEmptyText: {
+    fontSize: 14,
+    fontFamily: 'Poppins_400Regular',
+    color: '#6b7280',
   },
   medalCard: {
     flexDirection: 'row',
@@ -653,7 +755,7 @@ const styles = StyleSheet.create({
     width: 52,
     height: 52,
     borderRadius: 26,
-    backgroundColor: 'rgba(212,175,55,0.12)',
+    backgroundColor: 'rgba(30,58,138,0.12)',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -672,7 +774,7 @@ const styles = StyleSheet.create({
   },
   progressFill: {
     height: '100%',
-    backgroundColor: GOLD,
+    backgroundColor: PRIMARY_BLUE,
   },
   progressText: {
     marginTop: 6,
@@ -690,7 +792,7 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(11,27,58,0.08)',
   },
   recoTitle: {
-    color: GOLD,
+    color: PRIMARY_BLUE,
     fontSize: 14,
     marginBottom: 6,
     fontFamily: 'Poppins_600SemiBold',
@@ -707,13 +809,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 8,
     alignSelf: 'flex-start',
-    backgroundColor: 'rgba(212,175,55,0.15)',
+    backgroundColor: 'rgba(30,58,138,0.15)',
     paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: 999,
   },
   recoCtaText: {
-    color: GOLD,
+    color: PRIMARY_BLUE,
     fontSize: 12,
     fontFamily: 'Poppins_600SemiBold',
   },
@@ -722,36 +824,38 @@ const styles = StyleSheet.create({
   },
   cardLabelContainer: {
     alignItems: 'flex-end',
-    paddingRight: 28,
+    paddingRight: 32,
+    paddingLeft: 8,
     marginBottom: 10,
   },
   cardLabelTitle: {
-    color: GOLD,
-    fontSize: 18,
-    fontFamily: 'Poppins_600SemiBold',
+    color: PRIMARY_BLUE,
+    fontSize: 20,
+    fontFamily: 'Heebo_700Bold',
     marginBottom: 2,
+    letterSpacing: 0.5,
   },
   cardLabelDesc: {
-    color: '#0b1b3a',
-    opacity: 0.9,
+    color: '#4b5563',
     fontSize: 13,
-    lineHeight: 18,
+    lineHeight: 20,
     fontFamily: 'Poppins_400Regular',
+    marginTop: 2,
   },
   cardPressable: {
     justifyContent: 'center',
   },
   card: {
-    borderRadius: 18,
-    padding: 18,
-    backgroundColor: 'rgba(255,255,255,0.04)',
+    borderRadius: 20,
+    padding: 20,
+    backgroundColor: 'rgba(255,255,255,0.05)',
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: 'rgba(255,255,255,0.06)',
+    borderColor: 'rgba(255,255,255,0.08)',
     shadowColor: '#000',
-    shadowOpacity: 0.45,
-    shadowRadius: 18,
-    shadowOffset: { width: 0, height: 12 },
-    elevation: 8,
+    shadowOpacity: 0.5,
+    shadowRadius: 24,
+    shadowOffset: { width: 0, height: 16 },
+    elevation: 10,
   },
   lockIcon: {
     position: 'absolute',
@@ -782,7 +886,7 @@ const styles = StyleSheet.create({
     marginBottom: 12,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(212,175,55,0.12)',
+    backgroundColor: 'rgba(30,58,138,0.12)',
   },
   cardTitle: {
     color: '#FFFFFF',
@@ -797,6 +901,35 @@ const styles = StyleSheet.create({
     lineHeight: 20,
     fontFamily: 'Poppins_400Regular',
   },
+  takePartContainer: {
+    paddingHorizontal: 16,
+    paddingBottom: 20,
+    paddingTop: 12,
+    marginTop: 8,
+  },
+  takePartButton: {
+    borderRadius: 12,
+    overflow: 'hidden',
+    shadowColor: PRIMARY_BLUE,
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 5,
+  },
+  takePartGradient: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 14,
+    paddingHorizontal: 24,
+    gap: 8,
+  },
+  takePartText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontFamily: 'Poppins_600SemiBold',
+    letterSpacing: 0.5,
+  },
   bottomNav: {
     position: 'absolute',
     left: 0,
@@ -805,11 +938,16 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-around',
     alignItems: 'center',
-    paddingTop: 8,
-    paddingBottom: 12,
-    backgroundColor: 'rgba(255,255,255,0.04)',
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: 'rgba(255,255,255,0.08)',
+    paddingTop: 10,
+    paddingBottom: Platform.select({ ios: 20, android: 12, default: 12 }),
+    backgroundColor: '#ffffff',
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(11,27,58,0.1)',
+    shadowColor: '#000',
+    shadowOpacity: 0.1,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: -4 },
+    elevation: 8,
   },
   navItemPressable: {
     alignItems: 'center',
@@ -826,30 +964,45 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   iconBox: {
-    width: 28,
-    height: 28,
+    width: 32,
+    height: 32,
     alignItems: 'center',
     justifyContent: 'center',
+    borderRadius: 16,
   },
   pulseRing: {
     position: 'absolute',
     left: 0,
     top: 0,
-    width: 28,
-    height: 28,
-    borderRadius: 14,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
     borderWidth: 1,
-    borderColor: GOLD,
+    borderColor: PRIMARY_BLUE,
   },
   navLabel: {
-    fontSize: 12,
-    color: '#B3B3B3',
-    fontFamily: 'Poppins_400Regular',
+    fontSize: 11,
+    color: '#6b7280',
+    fontFamily: 'Poppins_500Medium',
+    marginTop: 2,
+  },
+  socialSection: {
+    marginTop: 20,
+    marginBottom: 30,
+    paddingHorizontal: 4,
+  },
+  socialSectionTitle: {
+    fontSize: 18,
+    fontFamily: 'Poppins_600SemiBold',
+    color: DEEP_BLUE,
+    marginBottom: 16,
+    textAlign: 'center',
   },
   socialRow: {
     flexDirection: 'row',
     justifyContent: 'space-around',
     gap: 8,
+    paddingHorizontal: 4,
   },
   socialButton: {
     flex: 1,
@@ -864,8 +1017,10 @@ const styles = StyleSheet.create({
   },
   socialLabel: {
     color: DEEP_BLUE,
-    fontSize: 14,
+    fontSize: 11,
     fontFamily: 'Poppins_500Medium',
+    textAlign: 'center',
+    marginTop: 4,
   },
   centerNavButton: {
     alignItems: 'center',
@@ -874,13 +1029,13 @@ const styles = StyleSheet.create({
   },
   centerNavGlowOuter: {
     position: 'absolute',
-    width: 96,
-    height: 96,
-    borderRadius: 48,
-    backgroundColor: GOLD,
-    opacity: 0.15,
-    top: -16,
-    left: -16,
+    width: 120,
+    height: 120,
+    borderRadius: 60,
+    backgroundColor: PRIMARY_BLUE,
+    opacity: 0.2,
+    top: -28,
+    left: -28,
   },
   centerNavGradient: {
     width: 64,
@@ -888,26 +1043,26 @@ const styles = StyleSheet.create({
     borderRadius: 32,
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: GOLD,
-    shadowOpacity: 0.6,
-    shadowRadius: 16,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 12,
+    shadowColor: PRIMARY_BLUE,
+    shadowOpacity: 0.7,
+    shadowRadius: 20,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 15,
     borderWidth: 4,
     borderColor: BG,
   },
   centerNavGlow: {
     position: 'absolute',
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    backgroundColor: GOLD,
-    opacity: 0.25,
+    width: 100,
+    height: 100,
+    borderRadius: 50,
+    backgroundColor: PRIMARY_BLUE,
+    opacity: 0.3,
   },
   centerNavLabel: {
     marginTop: 6,
     fontSize: 12,
-    color: GOLD,
+    color: PRIMARY_BLUE,
     fontFamily: 'Poppins_600SemiBold',
   },
 })

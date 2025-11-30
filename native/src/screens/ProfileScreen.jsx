@@ -1,13 +1,42 @@
 import React from 'react'
-import { View, Text, StyleSheet, ScrollView, Pressable, Platform } from 'react-native'
+import { View, Text, StyleSheet, ScrollView, Pressable, Platform, Alert } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
 import { LinearGradient } from 'expo-linear-gradient'
+import { signOut } from 'firebase/auth'
+import { auth } from '../config/firebase'
 
-const GOLD = '#D4AF37'
+const PRIMARY_BLUE = '#1e3a8a'
 const BG = '#FFFFFF'
 const DEEP_BLUE = '#0b1b3a'
 
-export default function ProfileScreen({ navigation }) {
+export default function ProfileScreen({ navigation, user, userRole }) {
+  const isAdmin = userRole === 'admin'
+
+  const handleLogout = () => {
+    Alert.alert(
+      'התנתקות',
+      'האם אתה בטוח שברצונך להתנתק?',
+      [
+        {
+          text: 'ביטול',
+          style: 'cancel'
+        },
+        {
+          text: 'התנתק',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await signOut(auth)
+            } catch (error) {
+              console.error('Logout error:', error)
+              Alert.alert('שגיאה', 'אירעה שגיאה בהתנתקות')
+            }
+          }
+        }
+      ]
+    )
+  }
+
   return (
     <View style={styles.screen}>
       {/* Header */}
@@ -28,10 +57,32 @@ export default function ProfileScreen({ navigation }) {
         {/* Profile Avatar */}
         <View style={styles.avatarSection}>
           <View style={styles.avatarCircle}>
-            <Ionicons name="person" size={60} color={GOLD} />
+            <Ionicons name="person" size={60} color={PRIMARY_BLUE} />
           </View>
-          <Text style={styles.userName}>משתמש אורח</Text>
-          <Text style={styles.userEmail}>guest@naorbaruch.com</Text>
+          {user ? (
+            <>
+              <Text style={styles.userName}>{user?.displayName || 'משתמש'}</Text>
+              <Text style={styles.userEmail}>{user?.email}</Text>
+              {isAdmin && (
+                <View style={styles.adminBadge}>
+                  <Ionicons name="shield-checkmark" size={16} color={PRIMARY_BLUE} />
+                  <Text style={styles.adminBadgeText}>מנהל</Text>
+                </View>
+              )}
+            </>
+          ) : (
+            <>
+              <Text style={styles.userName}>אורח</Text>
+              <Text style={styles.userEmail}>אינך מחובר</Text>
+              <Pressable
+                style={styles.loginPromptButton}
+                onPress={() => navigation?.navigate('Login')}
+                accessibilityRole="button"
+              >
+                <Text style={styles.loginPromptText}>התחבר לחשבון</Text>
+              </Pressable>
+            </>
+          )}
         </View>
 
         {/* Profile Options */}
@@ -48,25 +99,31 @@ export default function ProfileScreen({ navigation }) {
                 </View>
               </View>
               <View style={styles.optionIcon}>
-                <Ionicons name="person-outline" size={22} color={GOLD} />
+                <Ionicons name="person-outline" size={22} color={PRIMARY_BLUE} />
               </View>
             </View>
           </Pressable>
 
-          <Pressable style={styles.optionCard} accessibilityRole="button">
-            <View style={styles.optionContent}>
-              <View style={styles.optionRight}>
-                <Ionicons name="chevron-back" size={20} color="#9ca3af" />
-                <View style={styles.optionText}>
-                  <Text style={styles.optionTitle}>אבטחה וסיסמה</Text>
-                  <Text style={styles.optionDesc}>שינוי סיסמה והגדרות אבטחה</Text>
+          {user && (
+            <Pressable
+              style={styles.optionCard}
+              accessibilityRole="button"
+              onPress={() => navigation?.navigate('ChangePassword')}
+            >
+              <View style={styles.optionContent}>
+                <View style={styles.optionRight}>
+                  <Ionicons name="chevron-back" size={20} color="#9ca3af" />
+                  <View style={styles.optionText}>
+                    <Text style={styles.optionTitle}>אבטחה וסיסמה</Text>
+                    <Text style={styles.optionDesc}>שינוי סיסמה והגדרות אבטחה</Text>
+                  </View>
+                </View>
+                <View style={styles.optionIcon}>
+                  <Ionicons name="lock-closed-outline" size={22} color={PRIMARY_BLUE} />
                 </View>
               </View>
-              <View style={styles.optionIcon}>
-                <Ionicons name="lock-closed-outline" size={22} color={GOLD} />
-              </View>
-            </View>
-          </Pressable>
+            </Pressable>
+          )}
 
           <Pressable style={styles.optionCard} accessibilityRole="button">
             <View style={styles.optionContent}>
@@ -78,7 +135,7 @@ export default function ProfileScreen({ navigation }) {
                 </View>
               </View>
               <View style={styles.optionIcon}>
-                <Ionicons name="notifications-outline" size={22} color={GOLD} />
+                <Ionicons name="notifications-outline" size={22} color={PRIMARY_BLUE} />
               </View>
             </View>
           </Pressable>
@@ -94,7 +151,7 @@ export default function ProfileScreen({ navigation }) {
               style={StyleSheet.absoluteFill}
             />
             <View style={styles.subscriptionContent}>
-              <Ionicons name="star" size={32} color={GOLD} />
+              <Ionicons name="star" size={32} color={PRIMARY_BLUE} />
               <Text style={styles.subscriptionTitle}>חבר פרימיום</Text>
               <Text style={styles.subscriptionDesc}>
                 גישה מלאה לכל התכנים, התראות והקהילה
@@ -105,6 +162,51 @@ export default function ProfileScreen({ navigation }) {
             </View>
           </View>
         </View>
+
+        {/* Admin Section - Only visible to admins */}
+        {isAdmin && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>🔐 ניהול</Text>
+
+            <Pressable 
+              style={styles.optionCard} 
+              accessibilityRole="button"
+              onPress={() => navigation?.navigate('Admin')}
+            >
+              <View style={styles.optionContent}>
+                <View style={styles.optionRight}>
+                  <Ionicons name="chevron-back" size={20} color="#9ca3af" />
+                  <View style={styles.optionText}>
+                    <Text style={styles.optionTitle}>עריכת כרטיסיות</Text>
+                    <Text style={styles.optionDesc}>ערוך כרטיסיות ראשיות, חדשות, קורסים והתראות</Text>
+                  </View>
+                </View>
+                <View style={[styles.optionIcon, { backgroundColor: 'rgba(212,175,55,0.2)' }]}>
+                  <Ionicons name="albums-outline" size={22} color={PRIMARY_BLUE} />
+                </View>
+              </View>
+            </Pressable>
+
+            <Pressable 
+              style={styles.optionCard} 
+              accessibilityRole="button"
+              onPress={() => navigation?.navigate('Admin')}
+            >
+              <View style={styles.optionContent}>
+                <View style={styles.optionRight}>
+                  <Ionicons name="chevron-back" size={20} color="#9ca3af" />
+                  <View style={styles.optionText}>
+                    <Text style={styles.optionTitle}>פאנל אדמין</Text>
+                    <Text style={styles.optionDesc}>ניהול מלא של התוכן וההגדרות</Text>
+                  </View>
+                </View>
+                <View style={[styles.optionIcon, { backgroundColor: 'rgba(212,175,55,0.2)' }]}>
+                  <Ionicons name="construct-outline" size={22} color={PRIMARY_BLUE} />
+                </View>
+              </View>
+            </Pressable>
+          </View>
+        )}
 
         {/* Additional Options */}
         <View style={styles.section}>
@@ -120,7 +222,7 @@ export default function ProfileScreen({ navigation }) {
                 </View>
               </View>
               <View style={styles.optionIcon}>
-                <Ionicons name="help-circle-outline" size={22} color={GOLD} />
+                <Ionicons name="help-circle-outline" size={22} color={PRIMARY_BLUE} />
               </View>
             </View>
           </Pressable>
@@ -135,18 +237,29 @@ export default function ProfileScreen({ navigation }) {
                 </View>
               </View>
               <View style={styles.optionIcon}>
-                <Ionicons name="information-circle-outline" size={22} color={GOLD} />
+                <Ionicons name="information-circle-outline" size={22} color={PRIMARY_BLUE} />
               </View>
             </View>
           </Pressable>
         </View>
 
-        {/* Logout Button */}
+        {/* Logout/Login Button */}
         <View style={styles.section}>
-          <Pressable style={styles.logoutButton} accessibilityRole="button">
-            <Ionicons name="log-out-outline" size={22} color="#dc2626" />
-            <Text style={styles.logoutText}>התנתק</Text>
-          </Pressable>
+          {user ? (
+            <Pressable style={styles.logoutButton} accessibilityRole="button" onPress={handleLogout}>
+              <Ionicons name="log-out-outline" size={22} color="#dc2626" />
+              <Text style={styles.logoutText}>התנתק</Text>
+            </Pressable>
+          ) : (
+            <Pressable
+              style={styles.loginButton}
+              accessibilityRole="button"
+              onPress={() => navigation?.navigate('Login')}
+            >
+              <Ionicons name="log-in-outline" size={22} color={PRIMARY_BLUE} />
+              <Text style={styles.loginButtonText}>התחבר לחשבון</Text>
+            </Pressable>
+          )}
         </View>
 
         <View style={{ height: 40 }} />
@@ -194,12 +307,12 @@ const styles = StyleSheet.create({
     width: 100,
     height: 100,
     borderRadius: 50,
-    backgroundColor: 'rgba(212,175,55,0.12)',
+    backgroundColor: 'rgba(30,58,138,0.12)',
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 16,
     borderWidth: 2,
-    borderColor: GOLD,
+    borderColor: PRIMARY_BLUE,
   },
   userName: {
     fontSize: 22,
@@ -262,7 +375,7 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: 22,
-    backgroundColor: 'rgba(212,175,55,0.12)',
+    backgroundColor: 'rgba(30,58,138,0.12)',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -281,7 +394,7 @@ const styles = StyleSheet.create({
   subscriptionTitle: {
     fontSize: 22,
     fontFamily: 'Poppins_700Bold',
-    color: GOLD,
+    color: PRIMARY_BLUE,
     marginTop: 12,
     marginBottom: 8,
   },
@@ -294,7 +407,7 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   upgradeButton: {
-    backgroundColor: GOLD,
+    backgroundColor: PRIMARY_BLUE,
     paddingHorizontal: 32,
     paddingVertical: 12,
     borderRadius: 999,
@@ -319,5 +432,50 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontFamily: 'Poppins_600SemiBold',
     color: '#dc2626',
+  },
+  adminBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255, 215, 0, 0.15)',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
+    marginTop: 12,
+    gap: 6,
+    borderWidth: 1,
+    borderColor: PRIMARY_BLUE,
+  },
+  adminBadgeText: {
+    fontSize: 12,
+    fontFamily: 'Poppins_600SemiBold',
+    color: PRIMARY_BLUE,
+  },
+  loginPromptButton: {
+    backgroundColor: PRIMARY_BLUE,
+    paddingHorizontal: 24,
+    paddingVertical: 10,
+    borderRadius: 20,
+    marginTop: 12,
+  },
+  loginPromptText: {
+    fontSize: 14,
+    fontFamily: 'Poppins_600SemiBold',
+    color: '#ffffff',
+  },
+  loginButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 12,
+    backgroundColor: '#ffffff',
+    borderRadius: 12,
+    paddingVertical: 16,
+    borderWidth: 2,
+    borderColor: PRIMARY_BLUE,
+  },
+  loginButtonText: {
+    fontSize: 15,
+    fontFamily: 'Poppins_600SemiBold',
+    color: PRIMARY_BLUE,
   },
 })

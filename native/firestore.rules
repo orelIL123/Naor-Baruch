@@ -1,0 +1,140 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Helper function to check if user is admin
+    function isAdmin() {
+      return request.auth != null && 
+             exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+    }
+    
+    // Helper function to check if user is authenticated and admin (with safe check)
+    function isAuthenticatedAdmin() {
+      return request.auth != null && 
+             exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+    }
+    
+    // Helper function to check if user is authenticated
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    // Users collection
+    match /users/{userId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && request.auth.uid == userId;
+      allow update: if isAuthenticated() && (request.auth.uid == userId || isAdmin());
+      allow delete: if isAdmin();
+    }
+    
+    // Public read, admin write for all content collections
+    match /prayers/{document=**} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+    
+    // Prayer commitments - authenticated users only
+    match /prayerCommitments/{commitmentId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && request.auth.uid == request.resource.data.userId;
+      allow update: if isAuthenticated() && 
+        (request.auth.uid == resource.data.userId || 
+         request.auth.uid == resource.data.assignedToUserId);
+      allow delete: if isAdmin();
+    }
+    
+    match /newsletters/{document=**} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+    
+    match /music/{document=**} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+    
+    match /dailyInsights/{document=**} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+    
+    match /books/{document=**} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+    
+    match /lessons/{document=**} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+    
+    match /news/{document=**} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+    
+    match /contact/{document=**} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+    
+    // Home Cards - public read, admin write
+    match /homeCards/{cardId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+    
+    match /about/{document=**} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+    
+    match /donations/{document=**} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+    
+    match /courses/{document=**} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+    
+    match /cards/{document=**} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+    
+    match /recommendations/{document=**} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+    
+    match /tzadikim/{document=**} {
+      allow read: if true;
+      allow create: if isAdmin();
+      allow update: if isAdmin();
+      allow delete: if isAdmin();
+    }
+    
+    match /dailyLearning/{document=**} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+    
+    match /chidushim/{document=**} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+    
+    match /shortLessons/{document=**} {
+      allow read: if true;
+      allow write: if isAuthenticatedAdmin();
+    }
+    
+    match /longLessons/{document=**} {
+      allow read: if true;
+      allow write: if isAuthenticatedAdmin();
+    }
+  }
+}

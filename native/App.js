@@ -4,6 +4,10 @@ import { View, ActivityIndicator, Image, Animated } from 'react-native'
 import { NavigationContainer } from '@react-navigation/native'
 import { createNativeStackNavigator } from '@react-navigation/native-stack'
 import * as Notifications from 'expo-notifications'
+import * as Updates from 'expo-updates'
+import { onAuthStateChanged } from 'firebase/auth'
+import { doc, getDoc } from 'firebase/firestore'
+import { auth, db } from './src/config/firebase'
 import HomeScreen from './src/HomeScreen'
 import DailyInsightScreen from './src/screens/DailyInsightScreen'
 import CoursesScreen from './src/screens/CoursesScreen'
@@ -11,14 +15,37 @@ import NewsScreen from './src/screens/NewsScreen'
 import ProfileScreen from './src/screens/ProfileScreen'
 import LiveAlertsScreen from './src/screens/LiveAlertsScreen'
 import AdminScreen from './src/screens/AdminScreen'
+import PrayersScreen from './src/screens/PrayersScreen'
+import PrayerDetailScreen from './src/screens/PrayerDetailScreen'
+import PrayerCommitmentScreen from './src/screens/PrayerCommitmentScreen'
+import PdfViewerScreen from './src/screens/PdfViewerScreen'
+import ContactRabbiScreen from './src/screens/ContactRabbiScreen'
+import LoginScreen from './src/screens/LoginScreen'
+import RegisterScreen from './src/screens/RegisterScreen'
+import AboutScreen from './src/screens/AboutScreen'
+import MusicScreen from './src/screens/MusicScreen'
+import BooksScreen from './src/screens/BooksScreen'
+import NewslettersScreen from './src/screens/NewslettersScreen'
+import ChangePasswordScreen from './src/screens/ChangePasswordScreen'
+import TzadikimScreen from './src/screens/TzadikimScreen'
+import TzadikDetailScreen from './src/screens/TzadikDetailScreen'
+import DailyLearningScreen from './src/screens/DailyLearningScreen'
+import PianoScreen from './src/screens/PianoScreen'
+import ShortLessonsScreen from './src/screens/ShortLessonsScreen'
+import LongLessonsScreen from './src/screens/LongLessonsScreen'
+import LearningLibraryScreen from './src/screens/LearningLibraryScreen'
 import { useFonts, Poppins_400Regular, Poppins_600SemiBold, Poppins_700Bold } from '@expo-google-fonts/poppins'
 import { CinzelDecorative_400Regular, CinzelDecorative_700Bold } from '@expo-google-fonts/cinzel-decorative'
-import { registerForPushNotificationsAsync } from './src/utils/notifications'
+import { Heebo_400Regular, Heebo_500Medium, Heebo_600SemiBold, Heebo_700Bold } from '@expo-google-fonts/heebo'
+// import { registerForPushNotificationsAsync } from './src/utils/notifications'
 
 const Stack = createNativeStackNavigator()
 
 export default function App() {
   const [showSplash, setShowSplash] = useState(true)
+  const [user, setUser] = useState(null)
+  const [userRole, setUserRole] = useState(null)
+  const [authLoading, setAuthLoading] = useState(true)
   const fadeAnim = useRef(new Animated.Value(1)).current
   const navigationRef = useRef(null)
 
@@ -28,7 +55,62 @@ export default function App() {
     Poppins_700Bold,
     CinzelDecorative_400Regular,
     CinzelDecorative_700Bold,
+    Heebo_400Regular,
+    Heebo_500Medium,
+    Heebo_600SemiBold,
+    Heebo_700Bold,
   })
+
+  // Auth state listener
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
+      console.log('Auth state changed:', currentUser ? 'User logged in' : 'User logged out')
+      setUser(currentUser)
+
+      if (currentUser) {
+        // Fetch user role from Firestore
+        try {
+          const userDoc = await getDoc(doc(db, 'users', currentUser.uid))
+          if (userDoc.exists()) {
+            const role = userDoc.data().role
+            console.log('User role:', role)
+            setUserRole(role)
+          } else {
+            console.log('User document not found in Firestore')
+          }
+        } catch (error) {
+          console.error('Error fetching user role:', error)
+        }
+
+        // Navigate to Home after successful login
+        if (navigationRef.current) {
+          console.log('Navigating to Home after login')
+          navigationRef.current.reset({
+            index: 0,
+            routes: [{ name: 'Home' }],
+          })
+        }
+      } else {
+        setUserRole(null)
+        // Navigate to Login if user is logged out
+        if (navigationRef.current) {
+          const currentRoute = navigationRef.current.getCurrentRoute()
+          // Only navigate to Login if we're not already there and not on Register
+          if (currentRoute?.name !== 'Login' && currentRoute?.name !== 'Register') {
+            console.log('Navigating to Login after logout')
+            navigationRef.current.reset({
+              index: 0,
+              routes: [{ name: 'Login' }],
+            })
+          }
+        }
+      }
+
+      setAuthLoading(false)
+    })
+
+    return unsubscribe
+  }, [])
 
   useEffect(() => {
     // Show for 2s, then fade out over 1s
@@ -44,38 +126,70 @@ export default function App() {
     return () => clearTimeout(t)
   }, [fadeAnim])
 
-  // Register for push notifications
+  // Check for EAS Updates on app start
   useEffect(() => {
-    registerForPushNotificationsAsync().then(token => {
-      if (token) {
-        console.log('Push Token:', token)
-        // TODO: Save token to Firestore when user logs in
+    async function checkForUpdates() {
+      if (__DEV__) {
+        // Skip update check in development
+        return
       }
-    })
 
-    // Handle notification received while app is in foreground
-    const notificationListener = Notifications.addNotificationReceivedListener(notification => {
-      console.log('Notification received:', notification)
-    })
-
-    // Handle notification tap
-    const responseListener = Notifications.addNotificationResponseReceivedListener(response => {
-      const screen = response.notification.request.content.data.screen
-      if (screen && navigationRef.current) {
-        navigationRef.current.navigate(screen)
+      try {
+        const update = await Updates.checkForUpdateAsync()
+        if (update.isAvailable) {
+          await Updates.fetchUpdateAsync()
+          // Reload the app to apply the update
+          await Updates.reloadAsync()
+        }
+      } catch (error) {
+        console.log('Error checking for updates:', error)
       }
-    })
-
-    return () => {
-      Notifications.removeNotificationSubscription(notificationListener)
-      Notifications.removeNotificationSubscription(responseListener)
     }
+
+    checkForUpdates()
   }, [])
 
-  if (!fontsLoaded) {
+  // Push notifications disabled - will be added later
+  // useEffect(() => {
+  //   registerForPushNotificationsAsync().then(token => {
+  //     if (token) {
+  //       console.log('Push Token:', token)
+  //     }
+  //   })
+  //   ...
+  // }, [])
+
+  // Navigate based on auth state after loading completes
+  useEffect(() => {
+    if (!authLoading && navigationRef.current) {
+      const currentRoute = navigationRef.current.getCurrentRoute()
+
+      if (user) {
+        // User is logged in - navigate to Home if not already there
+        if (currentRoute?.name !== 'Home') {
+          console.log('User logged in, navigating to Home')
+          navigationRef.current.reset({
+            index: 0,
+            routes: [{ name: 'Home' }],
+          })
+        }
+      } else {
+        // User is logged out - navigate to Login if not already on auth screen
+        if (currentRoute?.name !== 'Login' && currentRoute?.name !== 'Register') {
+          console.log('User logged out, navigating to Login')
+          navigationRef.current.reset({
+            index: 0,
+            routes: [{ name: 'Login' }],
+          })
+        }
+      }
+    }
+  }, [user, authLoading])
+
+  if (!fontsLoaded || authLoading) {
     return (
       <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#FFFFFF' }}>
-        <ActivityIndicator color="#D4AF37" />
+        <ActivityIndicator color="#1e3a8a" />
         <StatusBar style="dark" />
       </View>
     )
@@ -85,33 +199,78 @@ export default function App() {
     <View style={{ flex: 1, backgroundColor: '#FFFFFF' }}>
       <NavigationContainer ref={navigationRef}>
         <StatusBar style="dark" />
-        <Stack.Navigator screenOptions={{ headerShown: false }}>
-          <Stack.Screen name="Home" component={HomeScreen} />
+        <Stack.Navigator
+          screenOptions={{ headerShown: false }}
+          initialRouteName={user ? "Home" : "Login"}
+        >
+          {/* Auth screens - always available */}
+          <Stack.Screen name="Login" component={LoginScreen} />
+          <Stack.Screen name="Register" component={RegisterScreen} />
+
+          {/* Main app screens - accessible to all users (guests and authenticated) */}
+          <Stack.Screen name="Home">
+            {(props) => <HomeScreen {...props} user={user} userRole={userRole} />}
+          </Stack.Screen>
           <Stack.Screen name="DailyInsight" component={DailyInsightScreen} />
-          <Stack.Screen name="Courses" component={CoursesScreen} />
+          <Stack.Screen name="DailyLearning">
+            {(props) => <DailyLearningScreen {...props} userRole={userRole} />}
+          </Stack.Screen>
+          <Stack.Screen name="Courses">
+            {(props) => <CoursesScreen {...props} user={user} userRole={userRole} />}
+          </Stack.Screen>
           <Stack.Screen name="News" component={NewsScreen} />
-          <Stack.Screen name="Profile" component={ProfileScreen} />
+          <Stack.Screen name="Profile">
+            {(props) => <ProfileScreen {...props} user={user} userRole={userRole} />}
+          </Stack.Screen>
           <Stack.Screen name="LiveAlerts" component={LiveAlertsScreen} />
-          <Stack.Screen name="Admin" component={AdminScreen} />
+          <Stack.Screen name="Prayers" component={PrayersScreen} />
+          <Stack.Screen name="PrayerDetail" component={PrayerDetailScreen} />
+          <Stack.Screen name="PrayerCommitment" component={PrayerCommitmentScreen} />
+          <Stack.Screen name="PdfViewer" component={PdfViewerScreen} />
+          <Stack.Screen name="ContactRabbi" component={ContactRabbiScreen} />
+          <Stack.Screen name="About" component={AboutScreen} />
+          <Stack.Screen name="Music" component={MusicScreen} />
+          <Stack.Screen name="Books" component={BooksScreen} />
+          <Stack.Screen name="Newsletters" component={NewslettersScreen} />
+          <Stack.Screen name="Tzadikim">
+            {(props) => <TzadikimScreen {...props} userRole={userRole} />}
+          </Stack.Screen>
+          <Stack.Screen name="TzadikDetail" component={TzadikDetailScreen} />
+          <Stack.Screen name="Piano" component={PianoScreen} />
+          <Stack.Screen name="LearningLibrary">
+            {(props) => <LearningLibraryScreen {...props} userRole={userRole} />}
+          </Stack.Screen>
+          <Stack.Screen name="ShortLessons">
+            {(props) => <ShortLessonsScreen {...props} userRole={userRole} />}
+          </Stack.Screen>
+          <Stack.Screen name="LongLessons">
+            {(props) => <LongLessonsScreen {...props} userRole={userRole} />}
+          </Stack.Screen>
+          <Stack.Screen name="ChangePassword" component={ChangePasswordScreen} />
+
+          {/* Admin screen - only for admins */}
+          {userRole === 'admin' && (
+            <Stack.Screen name="Admin" component={AdminScreen} />
+          )}
         </Stack.Navigator>
       </NavigationContainer>
       {showSplash && (
-        <Animated.View 
-          pointerEvents="none" 
+        <Animated.View
+          pointerEvents="none"
           style={[
-            { 
-              position: 'absolute', 
-              top: 0, 
-              left: 0, 
-              right: 0, 
-              bottom: 0, 
-              opacity: fadeAnim, 
-              backgroundColor: '#000' 
+            {
+              position: 'absolute',
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              opacity: fadeAnim,
+              backgroundColor: '#000'
             }
           ]}
         >
           <Image
-            source={require('./assets/splashphoto.png')}
+            source={require('./assets/splash-icon.png')}
             style={{ width: '100%', height: '100%' }}
             resizeMode="cover"
           />

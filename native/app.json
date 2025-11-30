@@ -1,49 +1,57 @@
 {
   "expo": {
-    "name": "Naor Baruch",
-    "slug": "naor-baruch",
+    "name": "הינוקא",
+    "slug": "yanuka",
+    "owner": "orel895",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/adaptive-icon.png",
+    "icon": "./assets/icon.png",
     "userInterfaceStyle": "dark",
     "newArchEnabled": true,
-    "owner": "orel895",
     "splash": {
-      "image": "./assets/splashphoto.png",
+      "image": "./assets/splash-icon.png",
       "resizeMode": "cover",
       "backgroundColor": "#0A0A0A"
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.naorbaruch.trading",
+      "bundleIdentifier": "com.hayanuka.app",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false
       }
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/adaptive-icon.png",
+        "foregroundImage": "./assets/icon.png",
         "backgroundColor": "#0A0A0A"
       },
       "edgeToEdgeEnabled": true,
-      "package": "com.naorbaruch.trading",
+      "package": "com.hayanuka.app",
       "permissions": [
         "android.permission.RECEIVE_BOOT_COMPLETED",
         "android.permission.VIBRATE"
       ]
     },
     "notification": {
-      "color": "#D4AF37",
+      "color": "#1e3a8a",
       "androidMode": "default",
-      "androidCollapsedTitle": "התראות מ-Naor Baruch"
+      "androidCollapsedTitle": "התראות מ-הינוקא"
     },
     "web": {
       "favicon": "./assets/favicon.png"
     },
     "extra": {
       "eas": {
-        "projectId": "c2aa47e6-3696-4f17-8681-0b4b4f178387"
+        "projectId": "a3cc4905-828c-479a-93f0-9b255f822bc8"
       }
-    }
+    },
+    "updates": {
+      "url": "https://u.expo.dev/a3cc4905-828c-479a-93f0-9b255f822bc8",
+      "fallbackToCacheTimeout": 0
+    },
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "scheme": "hayanuka"
   }
 }

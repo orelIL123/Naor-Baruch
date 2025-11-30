@@ -1,46 +1,88 @@
-import React from 'react'
-import { SafeAreaView, View, Text, StyleSheet, Pressable, ScrollView, Share } from 'react-native'
+import React, { useState, useEffect } from 'react'
+import { View, Text, StyleSheet, Pressable, ScrollView, Share, ActivityIndicator, RefreshControl } from 'react-native'
+import { SafeAreaView } from 'react-native-safe-area-context'
 import { LinearGradient } from 'expo-linear-gradient'
 import { Ionicons } from '@expo/vector-icons'
+import { collection, getDocs, query, orderBy, limit } from 'firebase/firestore'
+import { db } from '../config/firebase'
 
-const GOLD = '#D4AF37'
+const PRIMARY_BLUE = '#1e3a8a'
 const BG = '#FFFFFF'
 const DEEP_BLUE = '#0b1b3a'
 
-const todayInsight = {
-  title: 'הכוח של סבלנות במסחר',
-  date: new Date().toLocaleDateString('he-IL', {
+export default function DailyInsightScreen({ navigation }) {
+  const [insights, setInsights] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [refreshing, setRefreshing] = useState(false)
+  const [selectedInsight, setSelectedInsight] = useState(null)
+
+  const loadInsights = async () => {
+    try {
+      const q = query(
+        collection(db, 'dailyInsights'),
+        orderBy('date', 'desc'),
+        limit(10)
+      )
+      const querySnapshot = await getDocs(q)
+      const insightsData = querySnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }))
+      setInsights(insightsData)
+      if (insightsData.length > 0 && !selectedInsight) {
+        setSelectedInsight(insightsData[0])
+      }
+    } catch (error) {
+      console.error('Error loading insights:', error)
+    } finally {
+      setLoading(false)
+      setRefreshing(false)
+    }
+  }
+
+  useEffect(() => {
+    loadInsights()
+  }, [])
+
+  const onRefresh = () => {
+    setRefreshing(true)
+    loadInsights()
+  }
+
+  const handleShare = React.useCallback(() => {
+    if (selectedInsight) {
+      Share.share({
+        message: `${selectedInsight.title}\n\n${selectedInsight.content}\n\nמאת: ${selectedInsight.author}`
+      }).catch(() => {})
+    }
+  }, [selectedInsight])
+
+  if (loading) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <LinearGradient colors={[BG, '#f5f5f5']} style={StyleSheet.absoluteFill} />
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={PRIMARY_BLUE} />
+          <Text style={styles.loadingText}>טוען תובנות...</Text>
+        </View>
+      </SafeAreaView>
+    )
+  }
+
+  const todayInsight = selectedInsight || {
+    title: 'אין תובנות זמינות',
+    content: 'התובנות יתווספו בקרוב',
+    author: 'הרב שלמה יהודה בארי',
+    category: 'כללי',
+    date: new Date().toISOString()
+  }
+
+  const formattedDate = new Date(todayInsight.date).toLocaleDateString('he-IL', {
     weekday: 'long',
     year: 'numeric',
     month: 'long',
     day: 'numeric',
-  }),
-  readTime: '2 דקות קריאה',
-  category: 'Mindset',
-  author: 'נאור ברוך',
-  content: `המסחר הוא מרתון, לא ספרינט.
-
-כשאתה מתחיל את הדרך, אתה רוצה תוצאות מהירות. אתה רוצה לראות את החשבון גדל כל יום, לחוש את ההצלחה מיד. אבל האמת היא שהמסחר המצליח בנוי על סבלנות, משמעת, ואמונה בתהליך.
-
-כל טריידר מצליח עבר את התקופות הקשות. את הימים שבהם השוק נע נגדו, את השבועות שבהם הכל נראה אפור. אבל מה שמייחד אותם זה שהם לא ויתרו.
-
-הם הבינו משהו פשוט אך עמוק:
-• הצלחה במסחר היא תוצאה של עקביות לאורך זמן
-• כל טעות היא שיעור
-• כל יום הוא הזדמנות חדשה
-
-אז היום, תזכור:
-אתה לא מתחרה עם אף אחד חוץ מעצמך אתמול.
-התמקד בתהליך, לא רק בתוצאה.
-סבלנות + משמעת = הצלחה.
-
-💪 המשך לצמוח, המשך להאמין.`,
-}
-
-export default function DailyInsightScreen({ navigation }) {
-  const handleShare = React.useCallback(() => {
-    Share.share({ message: `${todayInsight.title}\n\n${todayInsight.content}\n\n— ${todayInsight.author}` }).catch(() => {})
-  }, [])
+  })
 
   return (
     <SafeAreaView style={styles.container}>
@@ -52,16 +94,43 @@ export default function DailyInsightScreen({ navigation }) {
           accessibilityRole="button"
           accessibilityLabel="חזרה"
         >
-          <Ionicons name="arrow-back" size={24} color={GOLD} />
+          <Ionicons name="arrow-back" size={24} color={PRIMARY_BLUE} />
         </Pressable>
-        <Text style={styles.headerTitle}>ערך יומי</Text>
+        <Text style={styles.headerTitle}>חידושים</Text>
         <View style={{ width: 24 }} />
       </View>
 
       <ScrollView
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+        }
       >
+        {insights.length > 1 && (
+          <View style={styles.insightsNav}>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+              {insights.map((insight, index) => (
+                <Pressable
+                  key={insight.id}
+                  style={[
+                    styles.insightTab,
+                    selectedInsight?.id === insight.id && styles.insightTabActive
+                  ]}
+                  onPress={() => setSelectedInsight(insight)}
+                >
+                  <Text style={[
+                    styles.insightTabText,
+                    selectedInsight?.id === insight.id && styles.insightTabTextActive
+                  ]}>
+                    {new Date(insight.date).toLocaleDateString('he-IL', { day: 'numeric', month: 'short' })}
+                  </Text>
+                </Pressable>
+              ))}
+            </ScrollView>
+          </View>
+        )}
+
         <View style={styles.card}>
           <View style={styles.categoryChip}>
             <Text style={styles.categoryText}>{todayInsight.category}</Text>
@@ -71,13 +140,15 @@ export default function DailyInsightScreen({ navigation }) {
 
           <View style={styles.metaRow}>
             <View style={styles.metaItem}>
-              <Ionicons name="calendar-outline" size={16} color={GOLD} style={styles.metaIcon} />
-              <Text style={styles.metaText}>{todayInsight.date}</Text>
+              <Ionicons name="calendar-outline" size={16} color={PRIMARY_BLUE} style={styles.metaIcon} />
+              <Text style={styles.metaText}>{formattedDate}</Text>
             </View>
-            <View style={styles.metaItem}>
-              <Ionicons name="time-outline" size={16} color={GOLD} style={styles.metaIcon} />
-              <Text style={styles.metaText}>{todayInsight.readTime}</Text>
-            </View>
+            {todayInsight.likes && (
+              <View style={styles.metaItem}>
+                <Ionicons name="heart-outline" size={16} color={PRIMARY_BLUE} style={styles.metaIcon} />
+                <Text style={styles.metaText}>{todayInsight.likes} אהבו</Text>
+              </View>
+            )}
           </View>
 
           <View style={styles.body}>
@@ -88,11 +159,10 @@ export default function DailyInsightScreen({ navigation }) {
 
           <View style={styles.authorRow}>
             <View style={styles.avatar}>
-              <Text style={styles.avatarText}>NB</Text>
+              <Text style={styles.avatarText}>י״ב</Text>
             </View>
             <View style={styles.authorInfo}>
               <Text style={styles.authorName}>{todayInsight.author}</Text>
-              <Text style={styles.authorTitle}>Trader • Mentor • Faith</Text>
             </View>
             <Pressable style={styles.shareBtn} onPress={handleShare} accessibilityRole="button">
               <Ionicons name="share-social-outline" size={16} color="#fff" />
@@ -129,12 +199,12 @@ const styles = StyleSheet.create({
     borderRadius: 18,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(212,175,55,0.12)',
+    backgroundColor: 'rgba(30,58,138,0.12)',
   },
   headerTitle: {
     fontSize: 20,
     fontFamily: 'Poppins_600SemiBold',
-    color: GOLD,
+    color: PRIMARY_BLUE,
   },
   content: {
     padding: 20,
@@ -155,10 +225,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 999,
-    backgroundColor: 'rgba(212,175,55,0.14)',
+    backgroundColor: 'rgba(30,58,138,0.14)',
   },
   categoryText: {
-    color: GOLD,
+    color: PRIMARY_BLUE,
     fontSize: 12,
     fontFamily: 'Poppins_600SemiBold',
     letterSpacing: 0.6,
@@ -214,7 +284,7 @@ const styles = StyleSheet.create({
     width: 50,
     height: 50,
     borderRadius: 25,
-    backgroundColor: GOLD,
+    backgroundColor: PRIMARY_BLUE,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -242,7 +312,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    backgroundColor: GOLD,
+    backgroundColor: PRIMARY_BLUE,
     paddingHorizontal: 14,
     paddingVertical: 8,
     borderRadius: 999,
@@ -256,7 +326,7 @@ const styles = StyleSheet.create({
     marginTop: 24,
     padding: 18,
     borderRadius: 16,
-    backgroundColor: 'rgba(212,175,55,0.08)',
+    backgroundColor: 'rgba(30,58,138,0.08)',
     alignItems: 'center',
     gap: 6,
   },
@@ -270,5 +340,37 @@ const styles = StyleSheet.create({
     color: '#6b7280',
     fontSize: 12,
     fontFamily: 'Poppins_400Regular',
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  loadingText: {
+    marginTop: 12,
+    fontSize: 16,
+    color: PRIMARY_BLUE,
+    fontFamily: 'Poppins_500Medium',
+  },
+  insightsNav: {
+    marginBottom: 16,
+  },
+  insightTab: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    marginRight: 8,
+    borderRadius: 20,
+    backgroundColor: 'rgba(30,58,138,0.1)',
+  },
+  insightTabActive: {
+    backgroundColor: PRIMARY_BLUE,
+  },
+  insightTabText: {
+    fontSize: 13,
+    fontFamily: 'Poppins_500Medium',
+    color: PRIMARY_BLUE,
+  },
+  insightTabTextActive: {
+    color: '#fff',
   },
 })

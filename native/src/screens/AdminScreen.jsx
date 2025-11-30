@@ -1,22 +1,33 @@
-import React, { useState } from 'react'
-import { SafeAreaView, View, Text, StyleSheet, ScrollView, Pressable, TextInput, Alert, Platform } from 'react-native'
+import React, { useState, useEffect } from 'react'
+import { View, Text, StyleSheet, ScrollView, Pressable, TextInput, Alert, Platform, Image, ActivityIndicator } from 'react-native'
+import { SafeAreaView } from 'react-native-safe-area-context'
 import { LinearGradient } from 'expo-linear-gradient'
 import { Ionicons } from '@expo/vector-icons'
-import { sendLocalNotification, formatAlertForPush } from '../utils/notifications'
+import * as DocumentPicker from 'expo-document-picker'
+import { collection, addDoc, doc, setDoc, serverTimestamp, Timestamp } from 'firebase/firestore'
+import { db, auth } from '../config/firebase'
+import { pickImage, uploadImageToStorage, generateCardImagePath, generateNewsImagePath } from '../utils/storage'
 
-const GOLD = '#D4AF37'
+const PRIMARY_BLUE = '#1e3a8a'
 const BG = '#FFFFFF'
 const DEEP_BLUE = '#0b1b3a'
 
 const TABS = [
-  { id: 'alerts', label: 'התראות', icon: 'notifications-outline' },
-  { id: 'courses', label: 'קורסים', icon: 'school-outline' },
-  { id: 'recommendations', label: 'המלצות', icon: 'sparkles-outline' },
-  { id: 'news', label: 'חדשות', icon: 'newspaper-outline' },
+  { id: 'cards', label: 'כרטיסיות', icon: 'grid-outline' },
+  { id: 'books', label: 'ספרים', icon: 'book-outline' },
+  { id: 'prayers', label: 'תפילות', icon: 'heart-outline' },
+  { id: 'newsletters', label: 'עלונים', icon: 'document-text-outline' },
+  { id: 'dailyLearning', label: 'לימוד יומי', icon: 'school-outline' },
+  { id: 'chidushim', label: 'חידושים', icon: 'bulb-outline' },
+  { id: 'yeshiva', label: 'בית המדרש', icon: 'business-outline' },
+  { id: 'tzadikim', label: 'צדיקים', icon: 'people-outline' },
+  { id: 'music', label: 'ניגונים', icon: 'musical-notes-outline' },
 ]
 
-export default function AdminScreen({ navigation }) {
-  const [activeTab, setActiveTab] = useState('alerts')
+export default function AdminScreen({ navigation, route }) {
+  // Check if initialTab was passed from navigation
+  const initialTab = route?.params?.initialTab || 'books';
+  const [activeTab, setActiveTab] = useState(initialTab);
 
   return (
     <SafeAreaView style={styles.container}>
@@ -29,7 +40,7 @@ export default function AdminScreen({ navigation }) {
           onPress={() => navigation.goBack()}
           accessibilityRole="button"
         >
-          <Ionicons name="arrow-back" size={24} color={GOLD} />
+          <Ionicons name="arrow-back" size={24} color={PRIMARY_BLUE} />
         </Pressable>
         <Text style={styles.headerTitle}>🔐 פאנל אדמין</Text>
         <View style={{ width: 36 }} />
@@ -47,7 +58,7 @@ export default function AdminScreen({ navigation }) {
               <Ionicons
                 name={tab.icon}
                 size={20}
-                color={activeTab === tab.id ? GOLD : '#6b7280'}
+                color={activeTab === tab.id ? PRIMARY_BLUE : '#6b7280'}
               />
               <Text style={[styles.tabText, activeTab === tab.id && styles.tabTextActive]}>
                 {tab.label}
@@ -59,247 +70,147 @@ export default function AdminScreen({ navigation }) {
 
       {/* Content */}
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-        {activeTab === 'alerts' && <AlertsForm />}
-        {activeTab === 'courses' && <CoursesForm />}
-        {activeTab === 'recommendations' && <RecommendationsForm />}
-        {activeTab === 'news' && <NewsForm />}
+        {activeTab === 'cards' && <CardsForm />}
+        {activeTab === 'books' && <BooksForm />}
+        {activeTab === 'prayers' && <PrayersForm />}
+        {activeTab === 'newsletters' && <NewslettersForm />}
+        {activeTab === 'dailyLearning' && <DailyLearningForm />}
+        {activeTab === 'chidushim' && <ChidushimForm />}
+        {activeTab === 'yeshiva' && <YeshivaForm />}
+        {activeTab === 'tzadikim' && <TzadikimForm />}
+        {activeTab === 'music' && <MusicForm />}
       </ScrollView>
     </SafeAreaView>
   )
 }
 
-// ========== ALERTS FORM ==========
-function AlertsForm() {
+// ========== CARDS FORM ==========
+function CardsForm() {
   const [form, setForm] = useState({
-    symbol: 'AAPL',
-    title: 'Apple Inc.',
-    type: 'buy',
-    price: '$182.45',
-    change: '+2.4%',
-    message: 'פריצה מעל רמת התנגדות קריטית ב-$180. מומנטום חיובי.',
-    priority: 'high',
-    targetAudience: ['premium', 'vip']
+    key: '',
+    title: '',
+    desc: '',
+    icon: 'grid-outline',
+    locked: false,
+    order: 0,
+    imageUri: null,
+    imageUrl: null,
   })
+  const [uploading, setUploading] = useState(false)
 
-  const handleSubmit = () => {
-    // Mock: שליחת התראה מקומית לבדיקה
-    const notification = formatAlertForPush({
-      id: Date.now().toString(),
-      ...form
-    })
+  const handlePickImage = async () => {
+    const image = await pickImage({ aspect: [16, 9] })
+    if (image) {
+      setForm({ ...form, imageUri: image.uri })
+    }
+  }
 
-    sendLocalNotification(notification)
+  const handleUploadImage = async () => {
+    if (!form.imageUri) {
+      Alert.alert('שגיאה', 'אנא בחר תמונה תחילה')
+      return
+    }
 
-    Alert.alert(
-      'התראה נשלחה! 🎉',
-      `סימבול: ${form.symbol}\nסוג: ${form.type}\nמחיר: ${form.price}\n\nבגרסה הסופית, זה יישמר ב-Firestore וישלח Push לכל המשתמשים.`
-    )
+    setUploading(true)
+    try {
+      const path = generateCardImagePath(form.key, 'card-image.jpg')
+      const url = await uploadImageToStorage(form.imageUri, path, (progress) => {
+        console.log(`Upload progress: ${progress}%`)
+      })
+      setForm({ ...form, imageUrl: url })
+      Alert.alert('הצלחה!', 'התמונה הועלתה בהצלחה')
+    } catch (error) {
+      Alert.alert('שגיאה', 'לא ניתן להעלות את התמונה')
+      console.error(error)
+    } finally {
+      setUploading(false)
+    }
+  }
+
+  const [saving, setSaving] = useState(false)
+
+  const handleSubmit = async () => {
+    if (!form.key || !form.title) {
+      Alert.alert('שגיאה', 'אנא מלא את כל השדות הנדרשים')
+      return
+    }
+
+    if (form.imageUri && !form.imageUrl) {
+      Alert.alert('שים לב', 'אנא העלה את התמונה לפני השמירה')
+      return
+    }
+
+    setSaving(true)
+    try {
+      // Save to Firestore
+      const cardRef = doc(db, 'homeCards', form.key)
+      await setDoc(cardRef, {
+        key: form.key,
+        title: form.title,
+        desc: form.desc,
+        icon: form.icon,
+        imageUrl: form.imageUrl || '',
+        locked: form.locked,
+        order: form.order || 0,
+        isActive: true,
+        route: form.key, // Navigation route
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      }, { merge: true })
+
+      Alert.alert(
+        'הצלחה! 🎴',
+        'הכרטיסייה נשמרה בהצלחה ותופיע במסך הבית',
+        [
+          {
+            text: 'אישור',
+            onPress: () => {
+              setForm({
+                key: '',
+                title: '',
+                desc: '',
+                icon: 'grid-outline',
+                locked: false,
+                order: 0,
+                imageUri: null,
+                imageUrl: '',
+              })
+            }
+          }
+        ]
+      )
+      console.log('Card saved successfully:', form.key)
+    } catch (error) {
+      console.error('Error saving card:', error)
+      Alert.alert('שגיאה', 'לא ניתן לשמור את הכרטיסייה. אנא נסה שנית.')
+    } finally {
+      setSaving(false)
+    }
   }
 
   return (
     <View style={styles.formContainer}>
-      <Text style={styles.formTitle}>📱 יצירת התראה חדשה</Text>
+      <Text style={styles.formTitle}>🎴 עריכת כרטיסיות ראשיות</Text>
 
       <View style={styles.formGroup}>
-        <Text style={styles.label}>סימבול מנייה</Text>
+        <Text style={styles.label}>מזהה כרטיס (Key) *</Text>
         <TextInput
           style={styles.input}
-          value={form.symbol}
-          onChangeText={text => setForm({...form, symbol: text})}
-          placeholder="AAPL"
+          value={form.key}
+          onChangeText={text => setForm({ ...form, key: text.replace(/\s/g, '-').toLowerCase() })}
+          placeholder="לדוגמה: daily-insight"
+          autoCapitalize="none"
         />
+        <Text style={styles.helpText}>המזהה צריך להיות ייחודי (ללא רווחים, באנגלית)</Text>
       </View>
 
       <View style={styles.formGroup}>
-        <Text style={styles.label}>שם מלא</Text>
-        <TextInput
-          style={styles.input}
-          value={form.title}
-          onChangeText={text => setForm({...form, title: text})}
-          placeholder="Apple Inc."
-        />
-      </View>
-
-      <View style={styles.formGroup}>
-        <Text style={styles.label}>סוג התראה</Text>
-        <View style={styles.radioGroup}>
-          {[
-            { value: 'buy', label: '📈 קנייה', color: '#16a34a' },
-            { value: 'sell', label: '📉 מכירה', color: '#dc2626' },
-            { value: 'watch', label: '👁️ מעקב', color: '#f59e0b' }
-          ].map(option => (
-            <Pressable
-              key={option.value}
-              style={[
-                styles.radioButton,
-                form.type === option.value && { backgroundColor: `${option.color}15`, borderColor: option.color }
-              ]}
-              onPress={() => setForm({...form, type: option.value})}
-            >
-              <Text style={[styles.radioText, form.type === option.value && { color: option.color }]}>
-                {option.label}
-              </Text>
-            </Pressable>
-          ))}
-        </View>
-      </View>
-
-      <View style={styles.formRow}>
-        <View style={[styles.formGroup, { flex: 1 }]}>
-          <Text style={styles.label}>מחיר</Text>
-          <TextInput
-            style={styles.input}
-            value={form.price}
-            onChangeText={text => setForm({...form, price: text})}
-            placeholder="$182.45"
-          />
-        </View>
-
-        <View style={[styles.formGroup, { flex: 1 }]}>
-          <Text style={styles.label}>שינוי</Text>
-          <TextInput
-            style={styles.input}
-            value={form.change}
-            onChangeText={text => setForm({...form, change: text})}
-            placeholder="+2.4%"
-          />
-        </View>
-      </View>
-
-      <View style={styles.formGroup}>
-        <Text style={styles.label}>הודעה (80-120 תווים)</Text>
-        <TextInput
-          style={[styles.input, styles.textArea]}
-          value={form.message}
-          onChangeText={text => setForm({...form, message: text})}
-          placeholder="הודעה קצרה על ההתראה..."
-          multiline
-          numberOfLines={3}
-          maxLength={120}
-        />
-        <Text style={styles.charCount}>{form.message.length}/120</Text>
-      </View>
-
-      <View style={styles.formGroup}>
-        <Text style={styles.label}>עדיפות</Text>
-        <View style={styles.radioGroup}>
-          {[
-            { value: 'high', label: '🔥 דחוף', color: '#dc2626' },
-            { value: 'medium', label: '⚡ בינוני', color: '#f59e0b' },
-            { value: 'low', label: '💡 נמוך', color: '#6b7280' }
-          ].map(option => (
-            <Pressable
-              key={option.value}
-              style={[
-                styles.radioButton,
-                form.priority === option.value && { backgroundColor: `${option.color}15`, borderColor: option.color }
-              ]}
-              onPress={() => setForm({...form, priority: option.value})}
-            >
-              <Text style={[styles.radioText, form.priority === option.value && { color: option.color }]}>
-                {option.label}
-              </Text>
-            </Pressable>
-          ))}
-        </View>
-      </View>
-
-      <View style={styles.formGroup}>
-        <Text style={styles.label}>קהל יעד</Text>
-        <View style={styles.checkboxGroup}>
-          {[
-            { value: 'free', label: 'משתמשים חינמיים' },
-            { value: 'premium', label: 'Premium' },
-            { value: 'vip', label: 'VIP בלבד' }
-          ].map(option => (
-            <Pressable
-              key={option.value}
-              style={styles.checkbox}
-              onPress={() => {
-                if (form.targetAudience.includes(option.value)) {
-                  setForm({...form, targetAudience: form.targetAudience.filter(a => a !== option.value)})
-                } else {
-                  setForm({...form, targetAudience: [...form.targetAudience, option.value]})
-                }
-              }}
-            >
-              <View style={[styles.checkboxBox, form.targetAudience.includes(option.value) && styles.checkboxBoxChecked]}>
-                {form.targetAudience.includes(option.value) && (
-                  <Ionicons name="checkmark" size={16} color="#fff" />
-                )}
-              </View>
-              <Text style={styles.checkboxLabel}>{option.label}</Text>
-            </Pressable>
-          ))}
-        </View>
-      </View>
-
-      <Pressable style={styles.submitButton} onPress={handleSubmit}>
-        <LinearGradient colors={[GOLD, '#c49b2e']} style={StyleSheet.absoluteFill} />
-        <Ionicons name="send" size={20} color="#fff" />
-        <Text style={styles.submitButtonText}>שלח התראה + Push</Text>
-      </Pressable>
-
-      <Text style={styles.note}>
-        💡 כרגע זה שולח התראה מקומית לבדיקה. בגרסה הסופית, זה יישמר ב-Firestore וישלח Push לכל המשתמשים.
-      </Text>
-    </View>
-  )
-}
-
-// ========== COURSES FORM ==========
-function CoursesForm() {
-  const [form, setForm] = useState({
-    title: 'Foundations of Trading',
-    level: 'Beginner',
-    duration: '6 פרקים • 3.5 שעות',
-    description: 'מבוא למסחר ממושמע — הגדרת מטרות, ניהול סיכונים ובניית שגרה יומית.',
-    isPremium: false
-  })
-
-  const handleSubmit = () => {
-    Alert.alert(
-      'קורס יתווסף! 📚',
-      `כותרת: ${form.title}\nרמה: ${form.level}\n\nבגרסה הסופית:\n• העלאת וידאו ל-Firebase Storage\n• שמירת metadata ל-Firestore\n• העלאת תמונת cover`
-    )
-  }
-
-  return (
-    <View style={styles.formContainer}>
-      <Text style={styles.formTitle}>📚 הוספת קורס חדש</Text>
-
-      <View style={styles.formGroup}>
-        <Text style={styles.label}>כותרת הקורס</Text>
+        <Text style={styles.label}>כותרת הכרטיס</Text>
         <TextInput
           style={styles.input}
           value={form.title}
-          onChangeText={text => setForm({...form, title: text})}
-        />
-      </View>
-
-      <View style={styles.formGroup}>
-        <Text style={styles.label}>רמת קושי</Text>
-        <View style={styles.radioGroup}>
-          {['Beginner', 'Intermediate', 'Advanced', 'Mindset'].map(level => (
-            <Pressable
-              key={level}
-              style={[styles.radioButton, form.level === level && styles.radioButtonActive]}
-              onPress={() => setForm({...form, level})}
-            >
-              <Text style={[styles.radioText, form.level === level && styles.radioTextActive]}>
-                {level}
-              </Text>
-            </Pressable>
-          ))}
-        </View>
-      </View>
-
-      <View style={styles.formGroup}>
-        <Text style={styles.label}>משך הקורס</Text>
-        <TextInput
-          style={styles.input}
-          value={form.duration}
-          onChangeText={text => setForm({...form, duration: text})}
+          onChangeText={text => setForm({ ...form, title: text })}
+          placeholder="ערך יומי"
         />
       </View>
 
@@ -307,156 +218,489 @@ function CoursesForm() {
         <Text style={styles.label}>תיאור</Text>
         <TextInput
           style={[styles.input, styles.textArea]}
-          value={form.description}
-          onChangeText={text => setForm({...form, description: text})}
-          multiline
-          numberOfLines={4}
-        />
-      </View>
-
-      <View style={styles.formGroup}>
-        <Pressable
-          style={styles.checkbox}
-          onPress={() => setForm({...form, isPremium: !form.isPremium})}
-        >
-          <View style={[styles.checkboxBox, form.isPremium && styles.checkboxBoxChecked]}>
-            {form.isPremium && <Ionicons name="checkmark" size={16} color="#fff" />}
-          </View>
-          <Text style={styles.checkboxLabel}>🔒 קורס פרימיום (נעול למשתמשים רגילים)</Text>
-        </Pressable>
-      </View>
-
-      <View style={styles.uploadSection}>
-        <Pressable style={styles.uploadButton}>
-          <Ionicons name="cloud-upload-outline" size={24} color={GOLD} />
-          <Text style={styles.uploadButtonText}>העלה קובץ וידאו</Text>
-        </Pressable>
-        <Pressable style={styles.uploadButton}>
-          <Ionicons name="image-outline" size={24} color={GOLD} />
-          <Text style={styles.uploadButtonText}>העלה תמונת Cover</Text>
-        </Pressable>
-      </View>
-
-      <Pressable style={styles.submitButton} onPress={handleSubmit}>
-        <LinearGradient colors={[GOLD, '#c49b2e']} style={StyleSheet.absoluteFill} />
-        <Ionicons name="add-circle" size={20} color="#fff" />
-        <Text style={styles.submitButtonText}>הוסף קורס</Text>
-      </Pressable>
-    </View>
-  )
-}
-
-// ========== RECOMMENDATIONS FORM ==========
-function RecommendationsForm() {
-  const [form, setForm] = useState({
-    title: 'למה אני לא משתמש ב-Stop Loss',
-    type: 'video',
-    description: 'הסבר מפורט למה זה יכול להזיק למסחר שלך',
-    url: 'https://youtube.com/watch?v=...'
-  })
-
-  const handleSubmit = () => {
-    Alert.alert(
-      'המלצה תתווסף! ⭐',
-      `כותרת: ${form.title}\nסוג: ${form.type}\n\nיופיע בבאנר "נאור ממליץ לראות" במסך הבית`
-    )
-  }
-
-  return (
-    <View style={styles.formContainer}>
-      <Text style={styles.formTitle}>⭐ נאור ממליץ לראות</Text>
-
-      <View style={styles.formGroup}>
-        <Text style={styles.label}>סוג תוכן</Text>
-        <View style={styles.radioGroup}>
-          {[
-            { value: 'video', label: '🎥 וידאו' },
-            { value: 'article', label: '📰 מאמר' },
-            { value: 'podcast', label: '🎙️ פודקאסט' }
-          ].map(option => (
-            <Pressable
-              key={option.value}
-              style={[styles.radioButton, form.type === option.value && styles.radioButtonActive]}
-              onPress={() => setForm({...form, type: option.value})}
-            >
-              <Text style={[styles.radioText, form.type === option.value && styles.radioTextActive]}>
-                {option.label}
-              </Text>
-            </Pressable>
-          ))}
-        </View>
-      </View>
-
-      <View style={styles.formGroup}>
-        <Text style={styles.label}>כותרת</Text>
-        <TextInput
-          style={styles.input}
-          value={form.title}
-          onChangeText={text => setForm({...form, title: text})}
-        />
-      </View>
-
-      <View style={styles.formGroup}>
-        <Text style={styles.label}>תיאור קצר</Text>
-        <TextInput
-          style={[styles.input, styles.textArea]}
-          value={form.description}
-          onChangeText={text => setForm({...form, description: text})}
+          value={form.desc}
+          onChangeText={text => setForm({ ...form, desc: text })}
+          placeholder="תובנה מעוררת השראה ליום שלך"
           multiline
           numberOfLines={2}
         />
       </View>
 
       <View style={styles.formGroup}>
-        <Text style={styles.label}>קישור (URL)</Text>
+        <Text style={styles.label}>אייקון (Ionicons name)</Text>
         <TextInput
           style={styles.input}
-          value={form.url}
-          onChangeText={text => setForm({...form, url: text})}
+          value={form.icon}
+          onChangeText={text => setForm({ ...form, icon: text })}
+          placeholder="bulb-outline"
+          autoCapitalize="none"
+        />
+      </View>
+
+      <View style={styles.formGroup}>
+        <Pressable
+          style={styles.checkbox}
+          onPress={() => setForm({ ...form, locked: !form.locked })}
+        >
+          <View style={[styles.checkboxBox, form.locked && styles.checkboxBoxChecked]}>
+            {form.locked && <Ionicons name="checkmark" size={16} color="#fff" />}
+          </View>
+          <Text style={styles.checkboxLabel}>🔒 כרטיס נעול (רק למשתמשים רשומים)</Text>
+        </Pressable>
+      </View>
+
+      <View style={styles.formGroup}>
+        <Text style={styles.label}>תמונת רקע</Text>
+        {form.imageUri && (
+          <View style={styles.imagePreview}>
+            <Image source={{ uri: form.imageUri }} style={styles.previewImage} />
+            {form.imageUrl && (
+              <View style={styles.uploadedBadge}>
+                <Ionicons name="checkmark-circle" size={20} color="#16a34a" />
+                <Text style={styles.uploadedText}>הועלה</Text>
+              </View>
+            )}
+          </View>
+        )}
+        <View style={styles.uploadSection}>
+          <Pressable
+            style={styles.uploadButton}
+            onPress={handlePickImage}
+            disabled={uploading}
+          >
+            <Ionicons name="image-outline" size={24} color={PRIMARY_BLUE} />
+            <Text style={styles.uploadButtonText}>
+              {form.imageUri ? 'בחר תמונה אחרת' : 'בחר תמונת רקע'}
+            </Text>
+          </Pressable>
+          {form.imageUri && !form.imageUrl && (
+            <Pressable
+              style={[styles.uploadButton, uploading && styles.uploadButtonDisabled]}
+              onPress={handleUploadImage}
+              disabled={uploading}
+            >
+              {uploading ? (
+                <ActivityIndicator color={PRIMARY_BLUE} />
+              ) : (
+                <Ionicons name="cloud-upload-outline" size={24} color={PRIMARY_BLUE} />
+              )}
+              <Text style={styles.uploadButtonText}>
+                {uploading ? 'מעלה...' : 'העלה תמונה'}
+              </Text>
+            </Pressable>
+          )}
+        </View>
+      </View>
+
+      <View style={styles.separator} />
+
+      <Text style={styles.sectionSubtitle}>כותרת ראשית מעל הכרטיסיות</Text>
+
+      <View style={styles.formGroup}>
+        <Text style={styles.label}>סדר (Order) *</Text>
+        <TextInput
+          style={styles.input}
+          value={form.order?.toString() || '0'}
+          onChangeText={text => setForm({ ...form, order: parseInt(text) || 0 })}
+          placeholder="0"
+          keyboardType="numeric"
+        />
+        <Text style={styles.helpText}>מספר קטן יותר = יופיע ראשון</Text>
+      </View>
+
+      <Pressable style={styles.submitButton} onPress={handleSubmit}>
+        <LinearGradient colors={[PRIMARY_BLUE, '#1e40af']} style={StyleSheet.absoluteFill} />
+        <Ionicons name="save" size={20} color="#fff" />
+        <Text style={styles.submitButtonText}>שמור שינויים</Text>
+      </Pressable>
+
+      <Text style={styles.note}>
+        💡 שינויים יופיעו מיידית לאחר שמירה ב-Firestore. התמונות יועלו ל-Firebase Storage.
+      </Text>
+    </View>
+  )
+}
+
+// ========== BOOKS FORM ==========
+function BooksForm() {
+  const [form, setForm] = useState({
+    title: '',
+    note: '',
+    price: '',
+    link: '',
+    imageUri: null,
+    imageUrl: '',
+  })
+  const [uploading, setUploading] = useState(false)
+  const [saving, setSaving] = useState(false)
+
+  const handlePickImage = async () => {
+    const image = await pickImage({ aspect: [16, 9] })
+    if (image) {
+      setForm({ ...form, imageUri: image.uri })
+    }
+  }
+
+  const handleUploadImage = async () => {
+    if (!form.imageUri) {
+      Alert.alert('שגיאה', 'אנא בחר תמונה תחילה')
+      return
+    }
+
+    setUploading(true)
+    try {
+      const timestamp = Date.now()
+      const path = `books/${timestamp}/image.jpg`
+      const url = await uploadImageToStorage(form.imageUri, path, (progress) => {
+        console.log(`Upload progress: ${progress}%`)
+      })
+      setForm({ ...form, imageUrl: url })
+      Alert.alert('הצלחה!', 'התמונה הועלתה בהצלחה')
+    } catch (error) {
+      Alert.alert('שגיאה', 'לא ניתן להעלות את התמונה')
+      console.error(error)
+    } finally {
+      setUploading(false)
+    }
+  }
+
+  const handleSubmit = async () => {
+    if (!form.title) {
+      Alert.alert('שגיאה', 'אנא הזן כותרת הספר')
+      return
+    }
+
+    if (form.imageUri && !form.imageUrl) {
+      Alert.alert('שים לב', 'אנא העלה את התמונה לפני השמירה')
+      return
+    }
+
+    try {
+      setSaving(true)
+      await addDoc(collection(db, 'books'), {
+        title: form.title,
+        note: form.note || '',
+        price: form.price || '',
+        link: form.link || '',
+        imageUrl: form.imageUrl || '',
+        createdAt: serverTimestamp(),
+      })
+
+      Alert.alert(
+        'הצלחה! 📚',
+        'הספר נוסף בהצלחה ויופיע באפליקציה',
+        [
+          {
+            text: 'אישור',
+            onPress: () => {
+              setForm({
+                title: '',
+                note: '',
+                price: '',
+                link: '',
+                imageUri: null,
+                imageUrl: '',
+              })
+            }
+          }
+        ]
+      )
+    } catch (error) {
+      console.error('Error saving book:', error)
+      Alert.alert('שגיאה', 'לא ניתן לשמור את הספר. אנא נסה שנית.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <View style={styles.formContainer}>
+      <Text style={styles.formTitle}>📚 הוספת ספר</Text>
+
+      <View style={styles.formGroup}>
+        <Text style={styles.label}>כותרת הספר *</Text>
+        <TextInput
+          style={styles.input}
+          value={form.title}
+          onChangeText={text => setForm({ ...form, title: text })}
+          placeholder="לדוגמה: ליקוטי מוהר״ן"
+        />
+      </View>
+
+      <View style={styles.formGroup}>
+        <Text style={styles.label}>תיאור/הערה</Text>
+        <TextInput
+          style={[styles.input, styles.textArea]}
+          value={form.note}
+          onChangeText={text => setForm({ ...form, note: text })}
+          placeholder="תיאור קצר על הספר..."
+          multiline
+          numberOfLines={4}
+        />
+      </View>
+
+      <View style={styles.formRow}>
+        <View style={[styles.formGroup, { flex: 1 }]}>
+          <Text style={styles.label}>מחיר (אופציונלי)</Text>
+          <TextInput
+            style={styles.input}
+            value={form.price}
+            onChangeText={text => setForm({ ...form, price: text })}
+            placeholder="₪99"
+            keyboardType="numeric"
+          />
+        </View>
+      </View>
+
+      <View style={styles.formGroup}>
+        <Text style={styles.label}>קישור לרכישה (אופציונלי)</Text>
+        <TextInput
+          style={styles.input}
+          value={form.link}
+          onChangeText={text => setForm({ ...form, link: text })}
           placeholder="https://..."
           autoCapitalize="none"
         />
       </View>
 
-      <Pressable style={styles.submitButton} onPress={handleSubmit}>
-        <LinearGradient colors={[GOLD, '#c49b2e']} style={StyleSheet.absoluteFill} />
-        <Ionicons name="star" size={20} color="#fff" />
-        <Text style={styles.submitButtonText}>פרסם המלצה</Text>
+      <View style={styles.formGroup}>
+        <Text style={styles.label}>תמונת הספר (אופציונלי)</Text>
+        {form.imageUri && (
+          <View style={styles.imagePreview}>
+            <Image source={{ uri: form.imageUri }} style={styles.previewImage} />
+            {form.imageUrl && (
+              <View style={styles.uploadedBadge}>
+                <Ionicons name="checkmark-circle" size={20} color="#16a34a" />
+                <Text style={styles.uploadedText}>הועלה</Text>
+              </View>
+            )}
+          </View>
+        )}
+        <View style={styles.uploadSection}>
+          <Pressable
+            style={styles.uploadButton}
+            onPress={handlePickImage}
+            disabled={uploading}
+          >
+            <Ionicons name="image-outline" size={24} color={PRIMARY_BLUE} />
+            <Text style={styles.uploadButtonText}>
+              {form.imageUri ? 'בחר תמונה אחרת' : 'בחר תמונה'}
+            </Text>
+          </Pressable>
+          {form.imageUri && !form.imageUrl && (
+            <Pressable
+              style={[styles.uploadButton, uploading && styles.uploadButtonDisabled]}
+              onPress={handleUploadImage}
+              disabled={uploading}
+            >
+              {uploading ? (
+                <ActivityIndicator color={PRIMARY_BLUE} />
+              ) : (
+                <Ionicons name="cloud-upload-outline" size={24} color={PRIMARY_BLUE} />
+              )}
+              <Text style={styles.uploadButtonText}>
+                {uploading ? 'מעלה...' : 'העלה תמונה'}
+              </Text>
+            </Pressable>
+          )}
+        </View>
+      </View>
+
+      <Pressable
+        style={[styles.submitButton, (saving || uploading) && styles.submitButtonDisabled]}
+        onPress={handleSubmit}
+        disabled={saving || uploading}
+      >
+        <LinearGradient colors={[PRIMARY_BLUE, '#1e40af']} style={StyleSheet.absoluteFill} />
+        {saving ? (
+          <ActivityIndicator color="#fff" />
+        ) : (
+          <Ionicons name="book" size={20} color="#fff" />
+        )}
+        <Text style={styles.submitButtonText}>
+          {saving ? 'שומר...' : 'הוסף ספר'}
+        </Text>
       </Pressable>
+
+      <Text style={styles.note}>
+        💡 הספר יישמר ב-Firestore ויופיע באפליקציה במסך "ספרים".
+      </Text>
     </View>
   )
 }
 
-// ========== NEWS FORM ==========
-function NewsForm() {
+// ========== NEWSLETTERS FORM ==========
+function NewslettersForm() {
   const [form, setForm] = useState({
-    title: 'השוק בתנודתיות גבוהה',
-    category: 'market',
-    content: 'המדדים הראשיים נסחרים בתנודתיות גבוהה...',
+    title: '',
+    description: '',
+    category: 'פרשת השבוע',
+    fileType: 'pdf',
+    fileUri: null,
+    fileUrl: null,
   })
+  const [uploading, setUploading] = useState(false)
 
-  const handleSubmit = () => {
-    Alert.alert('חדשה תתפרסם! 📰', `כותרת: ${form.title}\nקטגוריה: ${form.category}`)
+  const handlePickFile = async () => {
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: form.fileType === 'pdf' ? 'application/pdf' : 'image/*',
+        copyToCacheDirectory: true,
+      })
+
+      if (result.type === 'success' || !result.canceled) {
+        const file = result.assets ? result.assets[0] : result
+        setForm({ ...form, fileUri: file.uri })
+      }
+    } catch (error) {
+      console.error('Error picking file:', error)
+      Alert.alert('שגיאה', 'לא ניתן לבחור קובץ')
+    }
+  }
+
+  const handlePickImage = async () => {
+    const image = await pickImage({ aspect: [3, 4] })
+    if (image) {
+      setForm({ ...form, fileUri: image.uri, fileType: 'image' })
+    }
+  }
+
+  const handleUploadFile = async () => {
+    if (!form.fileUri) {
+      Alert.alert('שגיאה', 'אנא בחר קובץ תחילה')
+      return
+    }
+
+    setUploading(true)
+    try {
+      const timestamp = Date.now()
+      const extension = form.fileType === 'pdf' ? 'pdf' : 'jpg'
+      const path = `newsletters/${timestamp}/newsletter.${extension}`
+
+      const url = await uploadImageToStorage(form.fileUri, path, (progress) => {
+        console.log(`Upload progress: ${progress}%`)
+      })
+
+      setForm({ ...form, fileUrl: url })
+      Alert.alert('הצלחה!', 'הקובץ הועלה בהצלחה')
+    } catch (error) {
+      Alert.alert('שגיאה', 'לא ניתן להעלות את הקובץ')
+      console.error(error)
+    } finally {
+      setUploading(false)
+    }
+  }
+
+  const handleSubmit = async () => {
+    if (!form.title) {
+      Alert.alert('שגיאה', 'אנא הזן כותרת')
+      return
+    }
+
+    if (form.fileUri && !form.fileUrl) {
+      Alert.alert('שים לב', 'אנא העלה את הקובץ לפני השמירה')
+      return
+    }
+
+    try {
+      setUploading(true)
+
+      // Save to Firestore
+      await addDoc(collection(db, 'newsletters'), {
+        title: form.title,
+        description: form.description,
+        category: form.category,
+        fileType: form.fileType,
+        fileUrl: form.fileUrl || '',
+        thumbnailUrl: form.fileType === 'image' ? form.fileUrl : '',
+        publishDate: serverTimestamp(),
+        createdAt: serverTimestamp(),
+      })
+
+      Alert.alert(
+        'הצלחה! 📰',
+        'העלון נוסף בהצלחה ויופיע באפליקציה',
+        [
+          {
+            text: 'אישור',
+            onPress: () => {
+              // Reset form
+              setForm({
+                title: '',
+                description: '',
+                category: 'פרשת השבוע',
+                fileType: 'pdf',
+                fileUri: null,
+                fileUrl: null,
+              })
+            }
+          }
+        ]
+      )
+    } catch (error) {
+      console.error('Error saving newsletter:', error)
+      Alert.alert('שגיאה', 'לא ניתן לשמור את העלון. אנא נסה שנית.')
+    } finally {
+      setUploading(false)
+    }
   }
 
   return (
     <View style={styles.formContainer}>
-      <Text style={styles.formTitle}>📰 פרסום חדשה</Text>
+      <Text style={styles.formTitle}>📰 הוספת עלון חדש</Text>
+
+      <View style={styles.formGroup}>
+        <Text style={styles.label}>כותרת העלון</Text>
+        <TextInput
+          style={styles.input}
+          value={form.title}
+          onChangeText={text => setForm({ ...form, title: text })}
+          placeholder="לדוגמה: פרשת בראשית"
+        />
+      </View>
+
+      <View style={styles.formGroup}>
+        <Text style={styles.label}>תיאור (אופציונלי)</Text>
+        <TextInput
+          style={[styles.input, styles.textArea]}
+          value={form.description}
+          onChangeText={text => setForm({ ...form, description: text })}
+          placeholder="תיאור קצר של העלון..."
+          multiline
+          numberOfLines={3}
+        />
+      </View>
 
       <View style={styles.formGroup}>
         <Text style={styles.label}>קטגוריה</Text>
         <View style={styles.radioGroup}>
+          {['פרשת השבוע', 'חגים ומועדים', 'הלכה', 'כללי'].map(cat => (
+            <Pressable
+              key={cat}
+              style={[styles.radioButton, form.category === cat && styles.radioButtonActive]}
+              onPress={() => setForm({ ...form, category: cat })}
+            >
+              <Text style={[styles.radioText, form.category === cat && styles.radioTextActive]}>
+                {cat}
+              </Text>
+            </Pressable>
+          ))}
+        </View>
+      </View>
+
+      <View style={styles.formGroup}>
+        <Text style={styles.label}>סוג קובץ</Text>
+        <View style={styles.radioGroup}>
           {[
-            { value: 'market', label: '📊 שוק' },
-            { value: 'crypto', label: '₿ קריפטו' },
-            { value: 'education', label: '📚 לימוד' }
+            { value: 'pdf', label: '📄 PDF' },
+            { value: 'image', label: '🖼️ תמונה' }
           ].map(option => (
             <Pressable
               key={option.value}
-              style={[styles.radioButton, form.category === option.value && styles.radioButtonActive]}
-              onPress={() => setForm({...form, category: option.value})}
+              style={[styles.radioButton, form.fileType === option.value && styles.radioButtonActive]}
+              onPress={() => setForm({ ...form, fileType: option.value, fileUri: null, fileUrl: null })}
             >
-              <Text style={[styles.radioText, form.category === option.value && styles.radioTextActive]}>
+              <Text style={[styles.radioText, form.fileType === option.value && styles.radioTextActive]}>
                 {option.label}
               </Text>
             </Pressable>
@@ -465,30 +709,1462 @@ function NewsForm() {
       </View>
 
       <View style={styles.formGroup}>
-        <Text style={styles.label}>כותרת</Text>
+        <Text style={styles.label}>קובץ העלון</Text>
+        {form.fileUri && (
+          <View style={styles.imagePreview}>
+            {form.fileType === 'image' ? (
+              <Image source={{ uri: form.fileUri }} style={styles.previewImage} />
+            ) : (
+              <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#f0f9ff' }}>
+                <Ionicons name="document-text" size={60} color={PRIMARY_BLUE} />
+                <Text style={{ marginTop: 8, color: PRIMARY_BLUE, fontFamily: 'Poppins_500Medium' }}>PDF נבחר</Text>
+              </View>
+            )}
+            {form.fileUrl && (
+              <View style={styles.uploadedBadge}>
+                <Ionicons name="checkmark-circle" size={20} color="#16a34a" />
+                <Text style={styles.uploadedText}>הועלה</Text>
+              </View>
+            )}
+          </View>
+        )}
+        <View style={styles.uploadSection}>
+          <Pressable
+            style={styles.uploadButton}
+            onPress={form.fileType === 'pdf' ? handlePickFile : handlePickImage}
+            disabled={uploading}
+          >
+            <Ionicons name={form.fileType === 'pdf' ? 'document-outline' : 'image-outline'} size={24} color={PRIMARY_BLUE} />
+            <Text style={styles.uploadButtonText}>
+              {form.fileUri ? 'בחר קובץ אחר' : `בחר ${form.fileType === 'pdf' ? 'PDF' : 'תמונה'}`}
+            </Text>
+          </Pressable>
+          {form.fileUri && !form.fileUrl && (
+            <Pressable
+              style={[styles.uploadButton, uploading && styles.uploadButtonDisabled]}
+              onPress={handleUploadFile}
+              disabled={uploading}
+            >
+              {uploading ? (
+                <ActivityIndicator color={PRIMARY_BLUE} />
+              ) : (
+                <Ionicons name="cloud-upload-outline" size={24} color={PRIMARY_BLUE} />
+              )}
+              <Text style={styles.uploadButtonText}>
+                {uploading ? 'מעלה...' : 'העלה קובץ'}
+              </Text>
+            </Pressable>
+          )}
+        </View>
+      </View>
+
+      <Pressable style={styles.submitButton} onPress={handleSubmit}>
+        <LinearGradient colors={[PRIMARY_BLUE, '#1e40af']} style={StyleSheet.absoluteFill} />
+        <Ionicons name="add-circle" size={20} color="#fff" />
+        <Text style={styles.submitButtonText}>הוסף עלון</Text>
+      </Pressable>
+
+      <Text style={styles.note}>
+        💡 העלון יישמר ב-Firestore ויהיה זמין לצפייה והורדה באפליקציה.
+      </Text>
+    </View>
+  )
+}
+
+// ========== MUSIC FORM ==========
+function MusicForm() {
+  const [form, setForm] = useState({
+    title: '',
+    description: '',
+    youtubeId: '',
+    category: 'ניגונים',
+  })
+  const [saving, setSaving] = useState(false)
+
+  const handleSubmit = async () => {
+    if (!form.title || !form.youtubeId) {
+      Alert.alert('שגיאה', 'אנא מלא את כל השדות הנדרשים')
+      return
+    }
+
+    try {
+      setSaving(true)
+
+      // Save to Firestore
+      await addDoc(collection(db, 'music'), {
+        title: form.title,
+        description: form.description,
+        youtubeId: form.youtubeId,
+        category: form.category,
+        imageUrl: `https://i.ytimg.com/vi/${form.youtubeId}/hqdefault.jpg`,
+        createdAt: serverTimestamp(),
+      })
+
+      Alert.alert(
+        'הצלחה! 🎵',
+        'הניגון נוסף בהצלחה ויופיע באפליקציה',
+        [
+          {
+            text: 'אישור',
+            onPress: () => {
+              // Reset form
+              setForm({
+                title: '',
+                description: '',
+                youtubeId: '',
+                category: 'ניגונים',
+              })
+            }
+          }
+        ]
+      )
+    } catch (error) {
+      console.error('Error saving music:', error)
+      Alert.alert('שגיאה', 'לא ניתן לשמור את הניגון. אנא נסה שנית.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <View style={styles.formContainer}>
+      <Text style={styles.formTitle}>🎵 הוספת ניגון חדש</Text>
+
+      <View style={styles.formGroup}>
+        <Text style={styles.label}>כותרת הניגון</Text>
         <TextInput
           style={styles.input}
           value={form.title}
-          onChangeText={text => setForm({...form, title: text})}
+          onChangeText={text => setForm({ ...form, title: text })}
+          placeholder='לדוגמה: "שרו של ים"'
         />
       </View>
 
       <View style={styles.formGroup}>
-        <Text style={styles.label}>תוכן</Text>
+        <Text style={styles.label}>תיאור (אופציונלי)</Text>
         <TextInput
           style={[styles.input, styles.textArea]}
-          value={form.content}
-          onChangeText={text => setForm({...form, content: text})}
+          value={form.description}
+          onChangeText={text => setForm({ ...form, description: text })}
+          placeholder="תיאור קצר של הניגון..."
           multiline
-          numberOfLines={6}
+          numberOfLines={3}
+        />
+      </View>
+
+      <View style={styles.formGroup}>
+        <Text style={styles.label}>YouTube Video ID</Text>
+        <TextInput
+          style={styles.input}
+          value={form.youtubeId}
+          onChangeText={text => setForm({ ...form, youtubeId: text })}
+          placeholder="cB4tvSWyeMg"
+          autoCapitalize="none"
+        />
+        <Text style={styles.note}>
+          💡 העתק את ה-ID מהקישור של YouTube. לדוגמה: מהקישור https://www.youtube.com/watch?v=cB4tvSWyeMg העתק רק את cB4tvSWyeMg
+        </Text>
+      </View>
+
+      <View style={styles.formGroup}>
+        <Text style={styles.label}>קטגוריה</Text>
+        <TextInput
+          style={styles.input}
+          value={form.category}
+          onChangeText={text => setForm({ ...form, category: text })}
+          placeholder="ניגונים"
         />
       </View>
 
       <Pressable style={styles.submitButton} onPress={handleSubmit}>
-        <LinearGradient colors={[GOLD, '#c49b2e']} style={StyleSheet.absoluteFill} />
-        <Ionicons name="newspaper" size={20} color="#fff" />
-        <Text style={styles.submitButtonText}>פרסם חדשה</Text>
+        <LinearGradient colors={[PRIMARY_BLUE, '#1e40af']} style={StyleSheet.absoluteFill} />
+        <Ionicons name="musical-notes" size={20} color="#fff" />
+        <Text style={styles.submitButtonText}>הוסף ניגון</Text>
       </Pressable>
+
+      <Text style={styles.note}>
+        💡 הניגון יישמר ב-Firestore ויהיה זמין לנגינה ישירות מ-YouTube באפליקציה.
+      </Text>
+    </View>
+  )
+}
+
+// ========== DAILY LEARNING FORM ==========
+function DailyLearningForm() {
+  const [form, setForm] = useState({
+    title: '',
+    content: '',
+    category: 'תפילה',
+    author: '',
+    date: new Date().toISOString().split('T')[0], // Today's date in YYYY-MM-DD
+    audioUri: null,
+    audioUrl: '',
+    imageUri: null,
+    imageUrl: '',
+    youtubeId: '',
+    videoUrl: '',
+  })
+  const [uploading, setUploading] = useState(false)
+  const [saving, setSaving] = useState(false)
+
+  const handlePickAudio = async () => {
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: 'audio/*',
+        copyToCacheDirectory: true,
+      })
+
+      if (result.type === 'success' || !result.canceled) {
+        const file = result.assets ? result.assets[0] : result
+        setForm({ ...form, audioUri: file.uri })
+      }
+    } catch (error) {
+      console.error('Error picking audio:', error)
+      Alert.alert('שגיאה', 'לא ניתן לבחור קובץ אודיו')
+    }
+  }
+
+  const handlePickImage = async () => {
+    const image = await pickImage({ aspect: [16, 9] })
+    if (image) {
+      setForm({ ...form, imageUri: image.uri })
+    }
+  }
+
+  const handleUploadAudio = async () => {
+    if (!form.audioUri) {
+      Alert.alert('שגיאה', 'אנא בחר קובץ אודיו תחילה')
+      return
+    }
+
+    setUploading(true)
+    try {
+      const timestamp = Date.now()
+      const path = `dailyLearning/audio/${timestamp}/audio.mp3`
+      const url = await uploadImageToStorage(form.audioUri, path, (progress) => {
+        console.log(`Upload progress: ${progress}%`)
+      })
+      setForm({ ...form, audioUrl: url })
+      Alert.alert('הצלחה!', 'הקובץ האודיו הועלה בהצלחה')
+    } catch (error) {
+      Alert.alert('שגיאה', 'לא ניתן להעלות את קובץ האודיו')
+      console.error(error)
+    } finally {
+      setUploading(false)
+    }
+  }
+
+  const handleUploadImage = async () => {
+    if (!form.imageUri) {
+      Alert.alert('שגיאה', 'אנא בחר תמונה תחילה')
+      return
+    }
+
+    setUploading(true)
+    try {
+      const timestamp = Date.now()
+      const path = `dailyLearning/images/${timestamp}/image.jpg`
+      const url = await uploadImageToStorage(form.imageUri, path, (progress) => {
+        console.log(`Upload progress: ${progress}%`)
+      })
+      setForm({ ...form, imageUrl: url })
+      Alert.alert('הצלחה!', 'התמונה הועלתה בהצלחה')
+    } catch (error) {
+      Alert.alert('שגיאה', 'לא ניתן להעלות את התמונה')
+      console.error(error)
+    } finally {
+      setUploading(false)
+    }
+  }
+
+  const handleSubmit = async () => {
+    if (!form.title) {
+      Alert.alert('שגיאה', 'אנא הזן כותרת')
+      return
+    }
+
+    if ((form.audioUri && !form.audioUrl) || (form.imageUri && !form.imageUrl)) {
+      Alert.alert('שים לב', 'אנא העלה את הקבצים לפני השמירה')
+      return
+    }
+
+    try {
+      setSaving(true)
+
+      // Convert date string to Firestore Timestamp
+      let learningDate
+      if (form.date) {
+        learningDate = new Date(form.date)
+        learningDate.setHours(8, 0, 0, 0) // Set to 8:00 AM
+      } else {
+        learningDate = new Date()
+        learningDate.setHours(8, 0, 0, 0)
+      }
+
+      // Save to Firestore
+      await addDoc(collection(db, 'dailyLearning'), {
+        title: form.title,
+        content: form.content || '',
+        category: form.category,
+        author: form.author || 'הרב שלמה יהודה בארי',
+        date: Timestamp.fromDate(learningDate),
+        audioUrl: form.audioUrl || '',
+        imageUrl: form.imageUrl || '',
+        youtubeId: form.youtubeId || '',
+        videoUrl: form.videoUrl || '',
+        viewCount: 0,
+        playCount: 0,
+        soulElevations: 0,
+        isActive: true,
+        createdAt: serverTimestamp(),
+      })
+
+      Alert.alert(
+        'הצלחה! 📚',
+        'הלימוד היומי נוסף בהצלחה ויופיע באפליקציה',
+        [
+          {
+            text: 'אישור',
+            onPress: () => {
+              // Reset form
+              setForm({
+                title: '',
+                content: '',
+                category: 'תפילה',
+                author: '',
+                date: new Date().toISOString().split('T')[0],
+                audioUri: null,
+                audioUrl: '',
+                imageUri: null,
+                imageUrl: '',
+                youtubeId: '',
+                videoUrl: '',
+              })
+            }
+          }
+        ]
+      )
+    } catch (error) {
+      console.error('Error saving daily learning:', error)
+      Alert.alert('שגיאה', 'לא ניתן לשמור את הלימוד. אנא נסה שנית.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <View style={styles.formContainer}>
+      <Text style={styles.formTitle}>📚 הוספת לימוד יומי</Text>
+
+      <View style={styles.formGroup}>
+        <Text style={styles.label}>כותרת הלימוד *</Text>
+        <TextInput
+          style={styles.input}
+          value={form.title}
+          onChangeText={text => setForm({ ...form, title: text })}
+          placeholder="לדוגמה: חשיבות התפילה"
+        />
+      </View>
+
+      <View style={styles.formGroup}>
+        <Text style={styles.label}>תוכן הלימוד</Text>
+        <TextInput
+          style={[styles.input, styles.textArea]}
+          value={form.content}
+          onChangeText={text => setForm({ ...form, content: text })}
+          placeholder="כתוב את תוכן הלימוד כאן..."
+          multiline
+          numberOfLines={8}
+        />
+      </View>
+
+      <View style={styles.formGroup}>
+        <Text style={styles.label}>קטגוריה</Text>
+        <View style={styles.radioGroup}>
+          {['תפילה', 'תורה', 'חיזוק', 'הלכה', 'מוסר', 'כללי'].map(cat => (
+            <Pressable
+              key={cat}
+              style={[styles.radioButton, form.category === cat && styles.radioButtonActive]}
+              onPress={() => setForm({ ...form, category: cat })}
+            >
+              <Text style={[styles.radioText, form.category === cat && styles.radioTextActive]}>
+                {cat}
+              </Text>
+            </Pressable>
+          ))}
+        </View>
+      </View>
+
+      <View style={styles.formGroup}>
+        <Text style={styles.label}>שם הכותב</Text>
+        <TextInput
+          style={styles.input}
+          value={form.author}
+          onChangeText={text => setForm({ ...form, author: text })}
+          placeholder="הרב שלמה יהודה בארי"
+        />
+      </View>
+
+      <View style={styles.formGroup}>
+        <Text style={styles.label}>תאריך הלימוד</Text>
+        <TextInput
+          style={styles.input}
+          value={form.date}
+          onChangeText={text => setForm({ ...form, date: text })}
+          placeholder="YYYY-MM-DD"
+        />
+        <Text style={styles.note}>
+          💡 פורמט: YYYY-MM-DD (לדוגמה: 2025-11-29)
+        </Text>
+      </View>
+
+      {/* Audio Upload */}
+      <View style={styles.formGroup}>
+        <Text style={styles.label}>הקלטה (אופציונלי)</Text>
+        {form.audioUri && (
+          <View style={styles.audioPreview}>
+            <Ionicons name="musical-notes" size={40} color={PRIMARY_BLUE} />
+            <Text style={styles.audioPreviewText}>קובץ אודיו נבחר</Text>
+            {form.audioUrl && (
+              <View style={styles.uploadedBadge}>
+                <Ionicons name="checkmark-circle" size={20} color="#16a34a" />
+                <Text style={styles.uploadedText}>הועלה</Text>
+              </View>
+            )}
+          </View>
+        )}
+        <View style={styles.uploadSection}>
+          <Pressable
+            style={styles.uploadButton}
+            onPress={handlePickAudio}
+            disabled={uploading}
+          >
+            <Ionicons name="musical-notes-outline" size={24} color={PRIMARY_BLUE} />
+            <Text style={styles.uploadButtonText}>
+              {form.audioUri ? 'בחר קובץ אחר' : 'בחר קובץ אודיו'}
+            </Text>
+          </Pressable>
+          {form.audioUri && !form.audioUrl && (
+            <Pressable
+              style={[styles.uploadButton, uploading && styles.uploadButtonDisabled]}
+              onPress={handleUploadAudio}
+              disabled={uploading}
+            >
+              {uploading ? (
+                <ActivityIndicator color={PRIMARY_BLUE} />
+              ) : (
+                <Ionicons name="cloud-upload-outline" size={24} color={PRIMARY_BLUE} />
+              )}
+              <Text style={styles.uploadButtonText}>
+                {uploading ? 'מעלה...' : 'העלה אודיו'}
+              </Text>
+            </Pressable>
+          )}
+        </View>
+      </View>
+
+      {/* Image Upload */}
+      <View style={styles.formGroup}>
+        <Text style={styles.label}>תמונה (אופציונלי)</Text>
+        {form.imageUri && (
+          <View style={styles.imagePreview}>
+            <Image source={{ uri: form.imageUri }} style={styles.previewImage} />
+            {form.imageUrl && (
+              <View style={styles.uploadedBadge}>
+                <Ionicons name="checkmark-circle" size={20} color="#16a34a" />
+                <Text style={styles.uploadedText}>הועלה</Text>
+              </View>
+            )}
+          </View>
+        )}
+        <View style={styles.uploadSection}>
+          <Pressable
+            style={styles.uploadButton}
+            onPress={handlePickImage}
+            disabled={uploading}
+          >
+            <Ionicons name="image-outline" size={24} color={PRIMARY_BLUE} />
+            <Text style={styles.uploadButtonText}>
+              {form.imageUri ? 'בחר תמונה אחרת' : 'בחר תמונה'}
+            </Text>
+          </Pressable>
+          {form.imageUri && !form.imageUrl && (
+            <Pressable
+              style={[styles.uploadButton, uploading && styles.uploadButtonDisabled]}
+              onPress={handleUploadImage}
+              disabled={uploading}
+            >
+              {uploading ? (
+                <ActivityIndicator color={PRIMARY_BLUE} />
+              ) : (
+                <Ionicons name="cloud-upload-outline" size={24} color={PRIMARY_BLUE} />
+              )}
+              <Text style={styles.uploadButtonText}>
+                {uploading ? 'מעלה...' : 'העלה תמונה'}
+              </Text>
+            </Pressable>
+          )}
+        </View>
+      </View>
+
+      {/* YouTube Video */}
+      <View style={styles.formGroup}>
+        <Text style={styles.label}>YouTube Video ID (אופציונלי)</Text>
+        <TextInput
+          style={styles.input}
+          value={form.youtubeId}
+          onChangeText={text => setForm({ ...form, youtubeId: text })}
+          placeholder="cB4tvSWyeMg"
+          autoCapitalize="none"
+        />
+        <Text style={styles.note}>
+          💡 העתק את ה-ID מהקישור של YouTube. לדוגמה: מהקישור https://www.youtube.com/watch?v=cB4tvSWyeMg העתק רק את cB4tvSWyeMg
+        </Text>
+      </View>
+
+      {/* Video URL */}
+      <View style={styles.formGroup}>
+        <Text style={styles.label}>קישור לסרטון (אופציונלי)</Text>
+        <TextInput
+          style={styles.input}
+          value={form.videoUrl}
+          onChangeText={text => setForm({ ...form, videoUrl: text })}
+          placeholder="https://..."
+          autoCapitalize="none"
+        />
+        <Text style={styles.note}>
+          💡 אם אין YouTube ID, ניתן להזין קישור ישיר לסרטון
+        </Text>
+      </View>
+
+      <Pressable
+        style={[styles.submitButton, (saving || uploading) && styles.submitButtonDisabled]}
+        onPress={handleSubmit}
+        disabled={saving || uploading}
+      >
+        <LinearGradient colors={[PRIMARY_BLUE, '#1e40af']} style={StyleSheet.absoluteFill} />
+        {saving ? (
+          <ActivityIndicator color="#fff" />
+        ) : (
+          <Ionicons name="book" size={20} color="#fff" />
+        )}
+        <Text style={styles.submitButtonText}>
+          {saving ? 'שומר...' : 'הוסף לימוד יומי'}
+        </Text>
+      </Pressable>
+
+      <Text style={styles.note}>
+        💡 הלימוד יישמר ב-Firestore ויופיע באפליקציה. ניתן להוסיף הקלטה, תמונה או סרטון.
+      </Text>
+    </View>
+  )
+}
+
+// ========== PRAYERS FORM ==========
+function PrayersForm() {
+  const [form, setForm] = useState({
+    title: '',
+    content: '',
+    category: 'תפילה',
+    imageUri: null,
+    imageUrl: '',
+  })
+  const [uploading, setUploading] = useState(false)
+  const [saving, setSaving] = useState(false)
+
+  const handlePickImage = async () => {
+    const image = await pickImage({ aspect: [16, 9] })
+    if (image) {
+      setForm({ ...form, imageUri: image.uri })
+    }
+  }
+
+  const handleUploadImage = async () => {
+    if (!form.imageUri) {
+      Alert.alert('שגיאה', 'אנא בחר תמונה תחילה')
+      return
+    }
+
+    setUploading(true)
+    try {
+      const timestamp = Date.now()
+      const path = `prayers/${timestamp}/image.jpg`
+      const url = await uploadImageToStorage(form.imageUri, path, (progress) => {
+        console.log(`Upload progress: ${progress}%`)
+      })
+      setForm({ ...form, imageUrl: url })
+      Alert.alert('הצלחה!', 'התמונה הועלתה בהצלחה')
+    } catch (error) {
+      Alert.alert('שגיאה', 'לא ניתן להעלות את התמונה')
+      console.error(error)
+    } finally {
+      setUploading(false)
+    }
+  }
+
+  const handleSubmit = async () => {
+    if (!form.title || !form.content) {
+      Alert.alert('שגיאה', 'אנא מלא כותרת ותוכן')
+      return
+    }
+
+    if (form.imageUri && !form.imageUrl) {
+      Alert.alert('שים לב', 'אנא העלה את התמונה לפני השמירה')
+      return
+    }
+
+    try {
+      setSaving(true)
+      await addDoc(collection(db, 'prayers'), {
+        title: form.title,
+        content: form.content,
+        category: form.category,
+        imageUrl: form.imageUrl || '',
+        createdAt: serverTimestamp(),
+      })
+
+      Alert.alert(
+        'הצלחה! 💜',
+        'התפילה נוספה בהצלחה ויופיע באפליקציה',
+        [
+          {
+            text: 'אישור',
+            onPress: () => {
+              setForm({
+                title: '',
+                content: '',
+                category: 'תפילה',
+                imageUri: null,
+                imageUrl: '',
+              })
+            }
+          }
+        ]
+      )
+    } catch (error) {
+      console.error('Error saving prayer:', error)
+      Alert.alert('שגיאה', 'לא ניתן לשמור את התפילה. אנא נסה שנית.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <View style={styles.formContainer}>
+      <Text style={styles.formTitle}>💜 הוספת תפילה</Text>
+
+      <View style={styles.formGroup}>
+        <Text style={styles.label}>כותרת התפילה *</Text>
+        <TextInput
+          style={styles.input}
+          value={form.title}
+          onChangeText={text => setForm({ ...form, title: text })}
+          placeholder="לדוגמה: תפילה לשלום עם ישראל"
+        />
+      </View>
+
+      <View style={styles.formGroup}>
+        <Text style={styles.label}>תוכן התפילה *</Text>
+        <TextInput
+          style={[styles.input, styles.textArea]}
+          value={form.content}
+          onChangeText={text => setForm({ ...form, content: text })}
+          placeholder="כתוב את תוכן התפילה כאן..."
+          multiline
+          numberOfLines={10}
+        />
+      </View>
+
+      <View style={styles.formGroup}>
+        <Text style={styles.label}>קטגוריה</Text>
+        <View style={styles.radioGroup}>
+          {['תפילה', 'סגולה', 'ברכה', 'כללי'].map(cat => (
+            <Pressable
+              key={cat}
+              style={[styles.radioButton, form.category === cat && styles.radioButtonActive]}
+              onPress={() => setForm({ ...form, category: cat })}
+            >
+              <Text style={[styles.radioText, form.category === cat && styles.radioTextActive]}>
+                {cat}
+              </Text>
+            </Pressable>
+          ))}
+        </View>
+      </View>
+
+      <View style={styles.formGroup}>
+        <Text style={styles.label}>תמונה (אופציונלי)</Text>
+        {form.imageUri && (
+          <View style={styles.imagePreview}>
+            <Image source={{ uri: form.imageUri }} style={styles.previewImage} />
+            {form.imageUrl && (
+              <View style={styles.uploadedBadge}>
+                <Ionicons name="checkmark-circle" size={20} color="#16a34a" />
+                <Text style={styles.uploadedText}>הועלה</Text>
+              </View>
+            )}
+          </View>
+        )}
+        <View style={styles.uploadSection}>
+          <Pressable
+            style={styles.uploadButton}
+            onPress={handlePickImage}
+            disabled={uploading}
+          >
+            <Ionicons name="image-outline" size={24} color={PRIMARY_BLUE} />
+            <Text style={styles.uploadButtonText}>
+              {form.imageUri ? 'בחר תמונה אחרת' : 'בחר תמונה'}
+            </Text>
+          </Pressable>
+          {form.imageUri && !form.imageUrl && (
+            <Pressable
+              style={[styles.uploadButton, uploading && styles.uploadButtonDisabled]}
+              onPress={handleUploadImage}
+              disabled={uploading}
+            >
+              {uploading ? (
+                <ActivityIndicator color={PRIMARY_BLUE} />
+              ) : (
+                <Ionicons name="cloud-upload-outline" size={24} color={PRIMARY_BLUE} />
+              )}
+              <Text style={styles.uploadButtonText}>
+                {uploading ? 'מעלה...' : 'העלה תמונה'}
+              </Text>
+            </Pressable>
+          )}
+        </View>
+      </View>
+
+      <Pressable
+        style={[styles.submitButton, (saving || uploading) && styles.submitButtonDisabled]}
+        onPress={handleSubmit}
+        disabled={saving || uploading}
+      >
+        <LinearGradient colors={[PRIMARY_BLUE, '#1e40af']} style={StyleSheet.absoluteFill} />
+        {saving ? (
+          <ActivityIndicator color="#fff" />
+        ) : (
+          <Ionicons name="heart" size={20} color="#fff" />
+        )}
+        <Text style={styles.submitButtonText}>
+          {saving ? 'שומר...' : 'הוסף תפילה'}
+        </Text>
+      </Pressable>
+
+      <Text style={styles.note}>
+        💡 התפילה תישמר ב-Firestore ויופיע באפליקציה.
+      </Text>
+    </View>
+  )
+}
+
+// ========== CHIDUSHIM FORM ==========
+function ChidushimForm() {
+  const [form, setForm] = useState({
+    title: '',
+    content: '',
+    category: 'תורה',
+    imageUri: null,
+    imageUrl: '',
+  })
+  const [uploading, setUploading] = useState(false)
+  const [saving, setSaving] = useState(false)
+
+  const handlePickImage = async () => {
+    const image = await pickImage({ aspect: [16, 9] })
+    if (image) {
+      setForm({ ...form, imageUri: image.uri })
+    }
+  }
+
+  const handleUploadImage = async () => {
+    if (!form.imageUri) {
+      Alert.alert('שגיאה', 'אנא בחר תמונה תחילה')
+      return
+    }
+
+    setUploading(true)
+    try {
+      const timestamp = Date.now()
+      const path = `chidushim/${timestamp}/image.jpg`
+      const url = await uploadImageToStorage(form.imageUri, path, (progress) => {
+        console.log(`Upload progress: ${progress}%`)
+      })
+      setForm({ ...form, imageUrl: url })
+      Alert.alert('הצלחה!', 'התמונה הועלתה בהצלחה')
+    } catch (error) {
+      Alert.alert('שגיאה', 'לא ניתן להעלות את התמונה')
+      console.error(error)
+    } finally {
+      setUploading(false)
+    }
+  }
+
+  const handleSubmit = async () => {
+    if (!form.title || !form.content) {
+      Alert.alert('שגיאה', 'אנא מלא כותרת ותוכן')
+      return
+    }
+
+    if (form.imageUri && !form.imageUrl) {
+      Alert.alert('שים לב', 'אנא העלה את התמונה לפני השמירה')
+      return
+    }
+
+    try {
+      setSaving(true)
+      await addDoc(collection(db, 'chidushim'), {
+        title: form.title,
+        content: form.content,
+        category: form.category,
+        imageUrl: form.imageUrl || '',
+        createdAt: serverTimestamp(),
+      })
+
+      Alert.alert(
+        'הצלחה! 💡',
+        'החידוש נוסף בהצלחה ויופיע באפליקציה',
+        [
+          {
+            text: 'אישור',
+            onPress: () => {
+              setForm({
+                title: '',
+                content: '',
+                category: 'תורה',
+                imageUri: null,
+                imageUrl: '',
+              })
+            }
+          }
+        ]
+      )
+    } catch (error) {
+      console.error('Error saving chidush:', error)
+      Alert.alert('שגיאה', 'לא ניתן לשמור את החידוש. אנא נסה שנית.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <View style={styles.formContainer}>
+      <Text style={styles.formTitle}>💡 הוספת חידוש</Text>
+
+      <View style={styles.formGroup}>
+        <Text style={styles.label}>כותרת החידוש *</Text>
+        <TextInput
+          style={styles.input}
+          value={form.title}
+          onChangeText={text => setForm({ ...form, title: text })}
+          placeholder="לדוגמה: חידוש על פרשת השבוע"
+        />
+      </View>
+
+      <View style={styles.formGroup}>
+        <Text style={styles.label}>תוכן החידוש *</Text>
+        <TextInput
+          style={[styles.input, styles.textArea]}
+          value={form.content}
+          onChangeText={text => setForm({ ...form, content: text })}
+          placeholder="כתוב את תוכן החידוש כאן..."
+          multiline
+          numberOfLines={10}
+        />
+      </View>
+
+      <View style={styles.formGroup}>
+        <Text style={styles.label}>קטגוריה</Text>
+        <View style={styles.radioGroup}>
+          {['תורה', 'הלכה', 'אגדה', 'מוסר', 'כללי'].map(cat => (
+            <Pressable
+              key={cat}
+              style={[styles.radioButton, form.category === cat && styles.radioButtonActive]}
+              onPress={() => setForm({ ...form, category: cat })}
+            >
+              <Text style={[styles.radioText, form.category === cat && styles.radioTextActive]}>
+                {cat}
+              </Text>
+            </Pressable>
+          ))}
+        </View>
+      </View>
+
+      <View style={styles.formGroup}>
+        <Text style={styles.label}>תמונה (אופציונלי)</Text>
+        {form.imageUri && (
+          <View style={styles.imagePreview}>
+            <Image source={{ uri: form.imageUri }} style={styles.previewImage} />
+            {form.imageUrl && (
+              <View style={styles.uploadedBadge}>
+                <Ionicons name="checkmark-circle" size={20} color="#16a34a" />
+                <Text style={styles.uploadedText}>הועלה</Text>
+              </View>
+            )}
+          </View>
+        )}
+        <View style={styles.uploadSection}>
+          <Pressable
+            style={styles.uploadButton}
+            onPress={handlePickImage}
+            disabled={uploading}
+          >
+            <Ionicons name="image-outline" size={24} color={PRIMARY_BLUE} />
+            <Text style={styles.uploadButtonText}>
+              {form.imageUri ? 'בחר תמונה אחרת' : 'בחר תמונה'}
+            </Text>
+          </Pressable>
+          {form.imageUri && !form.imageUrl && (
+            <Pressable
+              style={[styles.uploadButton, uploading && styles.uploadButtonDisabled]}
+              onPress={handleUploadImage}
+              disabled={uploading}
+            >
+              {uploading ? (
+                <ActivityIndicator color={PRIMARY_BLUE} />
+              ) : (
+                <Ionicons name="cloud-upload-outline" size={24} color={PRIMARY_BLUE} />
+              )}
+              <Text style={styles.uploadButtonText}>
+                {uploading ? 'מעלה...' : 'העלה תמונה'}
+              </Text>
+            </Pressable>
+          )}
+        </View>
+      </View>
+
+      <Pressable
+        style={[styles.submitButton, (saving || uploading) && styles.submitButtonDisabled]}
+        onPress={handleSubmit}
+        disabled={saving || uploading}
+      >
+        <LinearGradient colors={[PRIMARY_BLUE, '#1e40af']} style={StyleSheet.absoluteFill} />
+        {saving ? (
+          <ActivityIndicator color="#fff" />
+        ) : (
+          <Ionicons name="bulb" size={20} color="#fff" />
+        )}
+        <Text style={styles.submitButtonText}>
+          {saving ? 'שומר...' : 'הוסף חידוש'}
+        </Text>
+      </Pressable>
+
+      <Text style={styles.note}>
+        💡 החידוש יישמר ב-Firestore ויופיע באפליקציה.
+      </Text>
+    </View>
+  )
+}
+
+// ========== YESHIVA FORM (בית המדרש - חדשות) ==========
+function YeshivaForm() {
+  const [form, setForm] = useState({
+    title: '',
+    content: '',
+    category: 'כללי',
+    imageUri: null,
+    imageUrl: '',
+  })
+  const [uploading, setUploading] = useState(false)
+  const [saving, setSaving] = useState(false)
+
+  const handlePickImage = async () => {
+    const image = await pickImage({ aspect: [16, 9] })
+    if (image) {
+      setForm({ ...form, imageUri: image.uri })
+    }
+  }
+
+  const handleUploadImage = async () => {
+    if (!form.imageUri) {
+      Alert.alert('שגיאה', 'אנא בחר תמונה תחילה')
+      return
+    }
+
+    setUploading(true)
+    try {
+      const timestamp = Date.now()
+      const path = `news/${timestamp}/image.jpg`
+      const url = await uploadImageToStorage(form.imageUri, path, (progress) => {
+        console.log(`Upload progress: ${progress}%`)
+      })
+      setForm({ ...form, imageUrl: url })
+      Alert.alert('הצלחה!', 'התמונה הועלתה בהצלחה')
+    } catch (error) {
+      Alert.alert('שגיאה', 'לא ניתן להעלות את התמונה')
+      console.error(error)
+    } finally {
+      setUploading(false)
+    }
+  }
+
+  const handleSubmit = async () => {
+    if (!form.title || !form.content) {
+      Alert.alert('שגיאה', 'אנא מלא כותרת ותוכן')
+      return
+    }
+
+    if (form.imageUri && !form.imageUrl) {
+      Alert.alert('שים לב', 'אנא העלה את התמונה לפני השמירה')
+      return
+    }
+
+    try {
+      setSaving(true)
+      await addDoc(collection(db, 'news'), {
+        title: form.title,
+        content: form.content,
+        category: form.category,
+        imageUrl: form.imageUrl || '',
+        isPublished: true,
+        date: serverTimestamp(),
+        createdAt: serverTimestamp(),
+      })
+
+      Alert.alert(
+        'הצלחה! 📢',
+        'החדשה מבית המדרש נוספה בהצלחה ויופיע באפליקציה',
+        [
+          {
+            text: 'אישור',
+            onPress: () => {
+              setForm({
+                title: '',
+                content: '',
+                category: 'כללי',
+                imageUri: null,
+                imageUrl: '',
+              })
+            }
+          }
+        ]
+      )
+    } catch (error) {
+      console.error('Error saving news:', error)
+      Alert.alert('שגיאה', 'לא ניתן לשמור את החדשה. אנא נסה שנית.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <View style={styles.formContainer}>
+      <Text style={styles.formTitle}>📢 הוספת חדשה מבית המדרש</Text>
+
+      <View style={styles.formGroup}>
+        <Text style={styles.label}>כותרת החדשה *</Text>
+        <TextInput
+          style={styles.input}
+          value={form.title}
+          onChangeText={text => setForm({ ...form, title: text })}
+          placeholder="לדוגמה: שיעור חדש בבית המדרש"
+        />
+      </View>
+
+      <View style={styles.formGroup}>
+        <Text style={styles.label}>תוכן החדשה *</Text>
+        <TextInput
+          style={[styles.input, styles.textArea]}
+          value={form.content}
+          onChangeText={text => setForm({ ...form, content: text })}
+          placeholder="כתוב את תוכן החדשה כאן..."
+          multiline
+          numberOfLines={8}
+        />
+      </View>
+
+      <View style={styles.formGroup}>
+        <Text style={styles.label}>קטגוריה</Text>
+        <View style={styles.radioGroup}>
+          {['כללי', 'שיעור', 'אירוע', 'לימוד', 'הודעות'].map(cat => (
+            <Pressable
+              key={cat}
+              style={[styles.radioButton, form.category === cat && styles.radioButtonActive]}
+              onPress={() => setForm({ ...form, category: cat })}
+            >
+              <Text style={[styles.radioText, form.category === cat && styles.radioTextActive]}>
+                {cat}
+              </Text>
+            </Pressable>
+          ))}
+        </View>
+      </View>
+
+      <View style={styles.formGroup}>
+        <Text style={styles.label}>תמונה (אופציונלי)</Text>
+        {form.imageUri && (
+          <View style={styles.imagePreview}>
+            <Image source={{ uri: form.imageUri }} style={styles.previewImage} />
+            {form.imageUrl && (
+              <View style={styles.uploadedBadge}>
+                <Ionicons name="checkmark-circle" size={20} color="#16a34a" />
+                <Text style={styles.uploadedText}>הועלה</Text>
+              </View>
+            )}
+          </View>
+        )}
+        <View style={styles.uploadSection}>
+          <Pressable
+            style={styles.uploadButton}
+            onPress={handlePickImage}
+            disabled={uploading}
+          >
+            <Ionicons name="image-outline" size={24} color={PRIMARY_BLUE} />
+            <Text style={styles.uploadButtonText}>
+              {form.imageUri ? 'בחר תמונה אחרת' : 'בחר תמונה'}
+            </Text>
+          </Pressable>
+          {form.imageUri && !form.imageUrl && (
+            <Pressable
+              style={[styles.uploadButton, uploading && styles.uploadButtonDisabled]}
+              onPress={handleUploadImage}
+              disabled={uploading}
+            >
+              {uploading ? (
+                <ActivityIndicator color={PRIMARY_BLUE} />
+              ) : (
+                <Ionicons name="cloud-upload-outline" size={24} color={PRIMARY_BLUE} />
+              )}
+              <Text style={styles.uploadButtonText}>
+                {uploading ? 'מעלה...' : 'העלה תמונה'}
+              </Text>
+            </Pressable>
+          )}
+        </View>
+      </View>
+
+      <Pressable
+        style={[styles.submitButton, (saving || uploading) && styles.submitButtonDisabled]}
+        onPress={handleSubmit}
+        disabled={saving || uploading}
+      >
+        <LinearGradient colors={[PRIMARY_BLUE, '#1e40af']} style={StyleSheet.absoluteFill} />
+        {saving ? (
+          <ActivityIndicator color="#fff" />
+        ) : (
+          <Ionicons name="business" size={20} color="#fff" />
+        )}
+        <Text style={styles.submitButtonText}>
+          {saving ? 'שומר...' : 'הוסף חדשה'}
+        </Text>
+      </Pressable>
+
+      <Text style={styles.note}>
+        💡 החדשה תישמר ב-Firestore ב-collection 'news' ויופיע באפליקציה במסך "מהנעשה בבית המדרש".
+      </Text>
+    </View>
+  )
+}
+
+// ========== TZADIKIM FORM ==========
+function TzadikimForm() {
+  const [form, setForm] = useState({
+    name: '',
+    title: '',
+    biography: '',
+    location: '',
+    birthDate: '',
+    deathDate: '',
+    period: '',
+    imageUri: null,
+    imageUrl: '',
+    books: '',
+    sourceUrl: '',
+    wikiUrl: '',
+  })
+  const [uploading, setUploading] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [currentUser, setCurrentUser] = useState(null);
+
+  useEffect(() => {
+    const user = auth.currentUser;
+    setCurrentUser(user);
+  }, []);
+
+  const handlePickImage = async () => {
+    const image = await pickImage({ aspect: [3, 4] })
+    if (image) {
+      setForm({ ...form, imageUri: image.uri })
+    }
+  }
+
+  const handleUploadImage = async () => {
+    if (!form.imageUri) {
+      Alert.alert('שגיאה', 'אנא בחר תמונה תחילה')
+      return
+    }
+
+    setUploading(true)
+    try {
+      const timestamp = Date.now()
+      const path = `tzadikim/${timestamp}/image.jpg`
+      console.log('Starting image upload:', { uri: form.imageUri, path })
+      
+      const url = await uploadImageToStorage(form.imageUri, path, (progress) => {
+        console.log(`Upload progress: ${progress}%`)
+      })
+      
+      console.log('Upload successful! URL:', url)
+      setForm({ ...form, imageUrl: url })
+      Alert.alert('הצלחה!', `התמונה הועלתה בהצלחה\n${url.substring(0, 50)}...`)
+    } catch (error) {
+      console.error('Upload error:', error)
+      Alert.alert('שגיאה', `לא ניתן להעלות את התמונה\n${error.message || error}`)
+    } finally {
+      setUploading(false)
+    }
+  }
+
+  const handleSubmit = async () => {
+    if (!form.name) {
+      Alert.alert('שגיאה', 'אנא הזן שם של הצדיק')
+      return
+    }
+
+    if (form.imageUri && !form.imageUrl) {
+      Alert.alert('שים לב', 'אנא העלה את התמונה לפני השמירה')
+      return
+    }
+
+    try {
+      setSaving(true)
+      
+      const booksArray = form.books ? form.books.split(',').map(b => b.trim()).filter(b => b) : []
+      
+      const tzadikData = {
+        name: form.name,
+        title: form.title || '',
+        biography: form.biography || '',
+        location: form.location || '',
+        birthDate: form.birthDate ? Timestamp.fromDate(new Date(form.birthDate)) : null,
+        deathDate: form.deathDate ? Timestamp.fromDate(new Date(form.deathDate)) : null,
+        period: form.period || '',
+        imageUrl: form.imageUrl || '',
+        books: booksArray,
+        sourceUrl: form.sourceUrl || '',
+        wikiUrl: form.wikiUrl || '',
+        viewCount: 0,
+        createdAt: serverTimestamp(),
+      }
+      
+      console.log('Saving tzadik with data:', { ...tzadikData, imageUrl: form.imageUrl })
+      
+      const docRef = await addDoc(collection(db, 'tzadikim'), tzadikData)
+      console.log('Tzadik saved with ID:', docRef.id, 'imageUrl:', form.imageUrl)
+
+      Alert.alert(
+        'הצלחה! 👥',
+        'הצדיק נוסף בהצלחה ויופיע באפליקציה',
+        [
+          {
+            text: 'אישור',
+            onPress: () => {
+              setForm({
+                name: '',
+                title: '',
+                biography: '',
+                location: '',
+                birthDate: '',
+                deathDate: '',
+                period: '',
+                imageUri: null,
+                imageUrl: '',
+                books: '',
+                sourceUrl: '',
+                wikiUrl: '',
+              })
+            }
+          }
+        ]
+      )
+    } catch (error) {
+      console.error('Error saving tzadik:', error)
+      Alert.alert('שגיאה', 'לא ניתן לשמור את הצדיק. אנא נסה שנית.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <View style={styles.formContainer}>
+      <View style={{ padding: 10, backgroundColor: '#f0f9ff', marginBottom: 15, borderRadius: 8, borderWidth: 1, borderColor: '#dbeafe' }}>
+        <Text style={{ fontWeight: 'bold', marginBottom: 5, fontSize: 16, color: '#1e3a8a', textAlign: 'right' }}>ℹ️ מידע משתמש</Text>
+        <Text style={{textAlign: 'right'}}>
+          <Text style={{ fontWeight: 'bold' }}>אימייל מחובר:</Text> {currentUser ? currentUser.email : '⚠️ לא מחובר'}
+        </Text>
+        <Text style={{textAlign: 'right'}}>
+          <Text style={{ fontWeight: 'bold' }}>UID:</Text> {currentUser ? currentUser.uid : 'N/A'}
+        </Text>
+      </View>
+      <Text style={styles.formTitle}>👥 הוספת צדיק</Text>
+
+      <View style={styles.formGroup}>
+        <Text style={styles.label}>שם הצדיק *</Text>
+        <TextInput
+          style={styles.input}
+          value={form.name}
+          onChangeText={text => setForm({ ...form, name: text })}
+          placeholder="לדוגמה: רבי נחמן מברסלב"
+        />
+      </View>
+
+      <View style={styles.formGroup}>
+        <Text style={styles.label}>תואר (אופציונלי)</Text>
+        <TextInput
+          style={styles.input}
+          value={form.title}
+          onChangeText={text => setForm({ ...form, title: text })}
+          placeholder="לדוגמה: האדמו״ר, הרב, הגאון"
+        />
+      </View>
+
+      <View style={styles.formGroup}>
+        <Text style={styles.label}>תולדות חיים</Text>
+        <TextInput
+          style={[styles.input, styles.textArea]}
+          value={form.biography}
+          onChangeText={text => setForm({ ...form, biography: text })}
+          placeholder="כתוב את תולדות חייו של הצדיק..."
+          multiline
+          numberOfLines={8}
+        />
+      </View>
+
+      <View style={styles.formGroup}>
+        <Text style={styles.label}>מיקום</Text>
+        <TextInput
+          style={styles.input}
+          value={form.location}
+          onChangeText={text => setForm({ ...form, location: text })}
+          placeholder="לדוגמה: ברסלב, אוקראינה"
+        />
+      </View>
+
+      <View style={styles.formRow}>
+        <View style={[styles.formGroup, { flex: 1 }]}>
+          <Text style={styles.label}>תאריך לידה (אופציונלי)</Text>
+          <TextInput
+            style={styles.input}
+            value={form.birthDate}
+            onChangeText={text => setForm({ ...form, birthDate: text })}
+            placeholder="YYYY-MM-DD"
+          />
+        </View>
+        <View style={[styles.formGroup, { flex: 1 }]}>
+          <Text style={styles.label}>תאריך פטירה (אופציונלי)</Text>
+          <TextInput
+            style={styles.input}
+            value={form.deathDate}
+            onChangeText={text => setForm({ ...form, deathDate: text })}
+            placeholder="YYYY-MM-DD"
+          />
+        </View>
+      </View>
+
+      <View style={styles.formGroup}>
+        <Text style={styles.label}>תקופה (אופציונלי)</Text>
+        <TextInput
+          style={styles.input}
+          value={form.period}
+          onChangeText={text => setForm({ ...form, period: text })}
+          placeholder="לדוגמה: המאה ה-18"
+        />
+      </View>
+
+      <View style={styles.formGroup}>
+        <Text style={styles.label}>ספרים (מופרדים בפסיק)</Text>
+        <TextInput
+          style={styles.input}
+          value={form.books}
+          onChangeText={text => setForm({ ...form, books: text })}
+          placeholder="לדוגמה: ליקוטי מוהר״ן, סיפורי מעשיות"
+        />
+      </View>
+
+      <View style={styles.formGroup}>
+        <Text style={styles.label}>קישור למקור (אופציונלי)</Text>
+        <TextInput
+          style={styles.input}
+          value={form.sourceUrl}
+          onChangeText={text => setForm({ ...form, sourceUrl: text })}
+          placeholder="https://..."
+          autoCapitalize="none"
+        />
+      </View>
+
+      <View style={styles.formGroup}>
+        <Text style={styles.label}>קישור לויקיפדיה (אופציונלי)</Text>
+        <TextInput
+          style={styles.input}
+          value={form.wikiUrl}
+          onChangeText={text => setForm({ ...form, wikiUrl: text })}
+          placeholder="https://he.wikipedia.org/..."
+          autoCapitalize="none"
+        />
+      </View>
+
+      <View style={styles.formGroup}>
+        <Text style={styles.label}>תמונה של הצדיק *</Text>
+        {form.imageUri && (
+          <View style={styles.imagePreview}>
+            <Image source={{ uri: form.imageUri }} style={styles.previewImage} />
+            {form.imageUrl && (
+              <View style={styles.uploadedBadge}>
+                <Ionicons name="checkmark-circle" size={20} color="#16a34a" />
+                <Text style={styles.uploadedText}>הועלה</Text>
+              </View>
+            )}
+          </View>
+        )}
+        <View style={styles.uploadSection}>
+          <Pressable
+            style={styles.uploadButton}
+            onPress={handlePickImage}
+            disabled={uploading}
+          >
+            <Ionicons name="image-outline" size={24} color={PRIMARY_BLUE} />
+            <Text style={styles.uploadButtonText}>
+              {form.imageUri ? 'בחר תמונה אחרת' : 'בחר תמונה'}
+            </Text>
+          </Pressable>
+          {form.imageUri && !form.imageUrl && (
+            <Pressable
+              style={[styles.uploadButton, uploading && styles.uploadButtonDisabled]}
+              onPress={handleUploadImage}
+              disabled={uploading}
+            >
+              {uploading ? (
+                <ActivityIndicator color={PRIMARY_BLUE} />
+              ) : (
+                <Ionicons name="cloud-upload-outline" size={24} color={PRIMARY_BLUE} />
+              )}
+              <Text style={styles.uploadButtonText}>
+                {uploading ? 'מעלה...' : 'העלה תמונה'}
+              </Text>
+            </Pressable>
+          )}
+        </View>
+      </View>
+
+      <Pressable
+        style={[styles.submitButton, (saving || uploading) && styles.submitButtonDisabled]}
+        onPress={handleSubmit}
+        disabled={saving || uploading}
+      >
+        <LinearGradient colors={[PRIMARY_BLUE, '#1e40af']} style={StyleSheet.absoluteFill} />
+        {saving ? (
+          <ActivityIndicator color="#fff" />
+        ) : (
+          <Ionicons name="people" size={20} color="#fff" />
+        )}
+        <Text style={styles.submitButtonText}>
+          {saving ? 'שומר...' : 'הוסף צדיק'}
+        </Text>
+      </Pressable>
+
+      <Text style={styles.note}>
+        💡 הצדיק יישמר ב-Firestore ויופיע באפליקציה במסך "ספר תולדות אדם". התמונה היא חובה.
+      </Text>
     </View>
   )
 }
@@ -547,7 +2223,7 @@ const styles = StyleSheet.create({
     color: '#6b7280',
   },
   tabTextActive: {
-    color: GOLD,
+    color: PRIMARY_BLUE,
   },
   content: {
     flex: 1,
@@ -615,7 +2291,7 @@ const styles = StyleSheet.create({
   },
   radioButtonActive: {
     backgroundColor: 'rgba(212,175,55,0.15)',
-    borderColor: GOLD,
+    borderColor: PRIMARY_BLUE,
   },
   radioText: {
     fontSize: 13,
@@ -623,7 +2299,7 @@ const styles = StyleSheet.create({
     color: '#6b7280',
   },
   radioTextActive: {
-    color: GOLD,
+    color: PRIMARY_BLUE,
   },
   checkboxGroup: {
     gap: 12,
@@ -643,8 +2319,8 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   checkboxBoxChecked: {
-    backgroundColor: GOLD,
-    borderColor: GOLD,
+    backgroundColor: PRIMARY_BLUE,
+    borderColor: PRIMARY_BLUE,
   },
   checkboxLabel: {
     fontSize: 14,
@@ -664,14 +2340,14 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     borderRadius: 12,
     borderWidth: 2,
-    borderColor: GOLD,
+    borderColor: PRIMARY_BLUE,
     borderStyle: 'dashed',
     backgroundColor: 'rgba(212,175,55,0.05)',
   },
   uploadButtonText: {
     fontSize: 13,
     fontFamily: 'Poppins_600SemiBold',
-    color: GOLD,
+    color: PRIMARY_BLUE,
   },
   submitButton: {
     flexDirection: 'row',
@@ -697,5 +2373,71 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(212,175,55,0.08)',
     padding: 12,
     borderRadius: 10,
+  },
+  separator: {
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: 'rgba(11,27,58,0.12)',
+    marginVertical: 8,
+  },
+  sectionSubtitle: {
+    fontSize: 16,
+    fontFamily: 'Poppins_600SemiBold',
+    color: DEEP_BLUE,
+    textAlign: 'right',
+    marginBottom: 4,
+  },
+  imagePreview: {
+    width: '100%',
+    height: 200,
+    borderRadius: 12,
+    overflow: 'hidden',
+    marginBottom: 12,
+    borderWidth: 2,
+    borderColor: 'rgba(212,175,55,0.2)',
+    position: 'relative',
+  },
+  previewImage: {
+    width: '100%',
+    height: '100%',
+    resizeMode: 'cover',
+  },
+  uploadedBadge: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: 'rgba(255,255,255,0.95)',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 20,
+  },
+  uploadedText: {
+    fontSize: 12,
+    fontFamily: 'Poppins_600SemiBold',
+    color: '#16a34a',
+  },
+  uploadButtonDisabled: {
+    opacity: 0.5,
+  },
+  audioPreview: {
+    width: '100%',
+    height: 100,
+    borderRadius: 12,
+    backgroundColor: 'rgba(30,58,138,0.08)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 12,
+    position: 'relative',
+  },
+  audioPreviewText: {
+    marginTop: 8,
+    fontSize: 14,
+    fontFamily: 'Poppins_500Medium',
+    color: PRIMARY_BLUE,
+  },
+  submitButtonDisabled: {
+    opacity: 0.6,
   },
 })
