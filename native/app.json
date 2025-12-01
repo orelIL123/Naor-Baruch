@@ -48,6 +48,9 @@
     "runtimeVersion": {
       "policy": "appVersion"
     },
-    "scheme": "hayanuka"
+    "scheme": "hayanuka",
+    "plugins": [
+      "./plugins/with-firebase-modular-headers"
+    ]
   }
 }
